@@ -1,4 +1,4 @@
-,timestamp,LHA_1,LHA_2,LHB_1,LHB_2,real_x_mm,real_y_mm,real_z_mm
+,timestamp,LHA_count_1,LHA_count_2,LHB_count_1,LHB_count_2,real_x_mm,real_y_mm,real_z_mm
 0,2023-05-04 14:51:42.320539,33947,78974,39629,85052,0,0,160
 1,2023-05-04 14:54:16.910967,33376,78472,39060,84468,40,0,160
 2,2023-05-04 14:56:34.982815,32790,77950,38496,83875,80,0,160

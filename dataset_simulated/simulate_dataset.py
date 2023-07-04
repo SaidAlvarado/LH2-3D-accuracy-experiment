@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cv2
+import json
+import pandas as pd
 from scipy.spatial.transform import Rotation
 
 #############################################################################
@@ -79,6 +81,30 @@ point3D = point3D[:, :3] / point3D[:, 3:4]
 # t_star = rot.as_matrix() @ t_star
 # point3D = (rot.as_matrix() @ point3D.T).T
 
+#############################################################################
+###                          Save dataset                                 ###
+#############################################################################
+
+# Create a pandas DataFrame from the extracted data
+df = pd.DataFrame({ 'azimuth_A':   azimuth_a,
+                    'elevation_A': elevation_a,
+                    'azimuth_B':   azimuth_b,
+                    'elevation_B': elevation_b,
+                    'real_x_mm':   points[:,0],
+                    'real_y_mm':   points[:,1],
+                    'real_z_mm':   points[:,2]})
+
+df.to_csv('dataset_simulated/data.csv', index=True)
+
+
+# Also save the canonical position of the lighthouse 
+matrix_list = { "lha_t": lha_t.tolist(),
+                "lha_R": lha_R.tolist(),
+                "lhb_t": lhb_t.tolist(),
+                "lhb_R": lhb_R.tolist()}
+
+with open('dataset_simulated/basestation.json', 'w') as file:
+    json.dump(matrix_list, file)
 
 #############################################################################
 ###                             Plotting                                  ###

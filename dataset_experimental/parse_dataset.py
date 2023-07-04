@@ -22,7 +22,7 @@ fcal = {'phase1-B': -0.005335,
 #############################################################################
 
 ## Read the Timestamps to get which point correspond to which positions
-with open("dataset - experimental/raw data/timestamps.json", "r") as file:
+with open("dataset_experimental/raw data/timestamps.json", "r") as file:
     time_data = json.load(file)
 
 # This is the important number
@@ -42,7 +42,7 @@ log_pattern = re.compile(r'timestamp=(?P<timestamp>.*?) .*? sweep_0_poly=(?P<swe
 data = []
 
 # Open the log file and iterate over each line
-with open("dataset - experimental/raw data/pydotbot.log", "r") as log_file:
+with open("dataset_experimental/raw data/pydotbot.log", "r") as log_file:
     for line in log_file:
         # Extract timestamp and source from the line
         match = log_pattern.search(line)
@@ -135,13 +135,13 @@ c2B = c0123[:,3]
 sorted_df = pd.DataFrame({
                           'timestamp' : df['timestamp'],
 
-                          'LHA_1': c0123[:,0],
+                          'LHA_count_1': c0123[:,0],
 
-                          'LHA_2': c0123[:,2],
+                          'LHA_count_2': c0123[:,2],
 
-                          'LHB_1': c0123[:,1],
+                          'LHB_count_1': c0123[:,1],
 
-                          'LHB_2': c0123[:,3]},
+                          'LHB_count_2': c0123[:,3]},
                           index = df.index
                           )
 
@@ -179,28 +179,28 @@ if ALL_DATA:
             start = datetime.strptime(time_data[z][gp]['start'], "%Y-%m-%dT%H:%M:%S.%fZ")
             end = datetime.strptime(time_data[z][gp]['end'], "%Y-%m-%dT%H:%M:%S.%fZ")
             # Find outliers by lookingvery strong sudden jumps the measurements of each gridpoints.
-            prev_diff_df = abs(sorted_df.loc[ (sorted_df['timestamp'] >= start) & (sorted_df['timestamp'] <= end),['LHA_1', 'LHA_2', 'LHB_1', 'LHB_2']].diff().fillna(0).shift(1))
-            next_diff_df = abs(sorted_df.loc[ (sorted_df['timestamp'] >= start) & (sorted_df['timestamp'] <= end),['LHA_1', 'LHA_2', 'LHB_1', 'LHB_2']].diff().fillna(0).shift(-1))
+            prev_diff_df = abs(sorted_df.loc[ (sorted_df['timestamp'] >= start) & (sorted_df['timestamp'] <= end),['LHA_count_1', 'LHA_count_2', 'LHB_count_1', 'LHB_count_2']].diff().fillna(0).shift(1))
+            next_diff_df = abs(sorted_df.loc[ (sorted_df['timestamp'] >= start) & (sorted_df['timestamp'] <= end),['LHA_count_1', 'LHA_count_2', 'LHB_count_1', 'LHB_count_2']].diff().fillna(0).shift(-1))
             # Get a boolean dataframe with indexes of the good measurement-s
-            filter_df = pd.concat([filter_df, (prev_diff_df['LHA_1'] <= 20 ) & (next_diff_df['LHA_1'] <= 20 ) & (prev_diff_df['LHA_2'] <= 20 ) & (next_diff_df['LHA_2'] <= 20 ) & (prev_diff_df['LHB_1'] <= 20 ) & (next_diff_df['LHB_1'] <= 20 ) & (prev_diff_df['LHB_2'] <= 20 ) & (next_diff_df['LHB_2'] <= 20 )])
+            filter_df = pd.concat([filter_df, (prev_diff_df['LHA_count_1'] <= 20 ) & (next_diff_df['LHA_count_1'] <= 20 ) & (prev_diff_df['LHA_count_2'] <= 20 ) & (next_diff_df['LHA_count_2'] <= 20 ) & (prev_diff_df['LHB_count_1'] <= 20 ) & (next_diff_df['LHB_count_1'] <= 20 ) & (prev_diff_df['LHB_count_2'] <= 20 ) & (next_diff_df['LHB_count_2'] <= 20 )])
             # filter_df = pd.concat([filter_df, diff_df.le(20).all(axis=1)])
 
     # Apply the filter that removes the outliers
     sorted_df_bak = sorted_df
     sorted_df = sorted_df.iloc[filter_df.index[filter_df[0] == True]].reset_index(drop=True)
 # Get the cleaned values back on the variables needed for the next part of the code.
-c1A = sorted_df['LHA_1'].values 
-c2A = sorted_df['LHA_2'].values
-c1B = sorted_df['LHB_1'].values
-c2B = sorted_df['LHB_2'].values
+c1A = sorted_df['LHA_count_1'].values 
+c2A = sorted_df['LHA_count_2'].values
+c1B = sorted_df['LHB_count_1'].values
+c2B = sorted_df['LHB_count_2'].values
 
 
 # Clear all point for which you don't know the corresponding 3D coordinate, and print.
 sorted_df = sorted_df[sorted_df['real_z_mm'] != -1]  # This was moved down into the analysis part of the code. To avoid 
 if ALL_DATA:
-    sorted_df.to_csv('dataset - experimental/data_all.csv', index=True)
+    sorted_df.to_csv('dataset_experimental/data_all.csv', index=True)
 else:
-    sorted_df.to_csv('dataset - experimental/data_1point.csv', index=True)
+    sorted_df.to_csv('dataset_experimental/data_1point.csv', index=True)
 
 
 #############################################################################

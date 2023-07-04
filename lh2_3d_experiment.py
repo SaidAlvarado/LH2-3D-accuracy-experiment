@@ -52,6 +52,16 @@ def LH2_count_to_pixels(count_1, count_2, mode):
     # Return the projected points
     return pts_lighthouse
 
+def LH2_angles_to_pixels(azimuth, elevation):
+    """
+    Project the Azimuth and Elevation angles of a LH2 basestation into the unit image plane.
+    """
+    pts_lighthouse = np.array([np.tan(azimuth),         # horizontal pixel  
+                               np.tan(elevation)]).T    # vertical   pixel 
+    return pts_lighthouse
+
+
+
 def solve_3d_scene(pts_a, pts_b):
     """
     Use the projected LH2-camera points to triangulate the position of the LH2  basestations and of the LH2 receiver
@@ -289,17 +299,17 @@ def plot_projected_LH_views(pts_a, pts_b):
 if __name__ == "__main__":
 
     # Import data
-    df=pd.read_csv('dataset - experimental/data_1point.csv', index_col=0)
-
-    # Get the cleaned values back on the variables needed for the next part of the code.
-    c1A = df['LHA_1'].values 
-    c2A = df['LHA_2'].values
-    c1B = df['LHB_1'].values
-    c2B = df['LHB_2'].values
+    df=pd.read_csv('dataset_experimental/data_1point.csv', index_col=0)
 
     # Project sweep angles on to the z=1 image plane
-    pts_lighthouse_A = LH2_count_to_pixels(c1A, c2A, 0)
-    pts_lighthouse_B = LH2_count_to_pixels(c1B, c2B, 1)
+    if 'azimuth_A' not in df.columns:   
+        # Use real dataset directly from lfsr counts
+        pts_lighthouse_A = LH2_count_to_pixels(df['LHA_count_1'].values, df['LHA_count_2'].values, 0)
+        pts_lighthouse_B = LH2_count_to_pixels(df['LHB_count_1'].values, df['LHB_count_2'].values, 1)
+    else: 
+        # Use simulated dataset from azimuth and elevation angles
+        pts_lighthouse_A = LH2_angles_to_pixels(df['azimuth_A'].values, df['elevation_A'].values)
+        pts_lighthouse_B = LH2_angles_to_pixels(df['azimuth_B'].values, df['elevation_B'].values)      
 
     # Add the LH2 projected matrix into the dataframe that holds the info about what point is where in real life.
     df['LHA_proj_x'] = pts_lighthouse_A[:,0]
