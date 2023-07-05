@@ -1,6 +1,7 @@
 import pandas as pd
 from datetime import datetime
 import numpy as np
+import json
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cv2
@@ -8,6 +9,12 @@ import cv2
 #############################################################################
 ###                                Options                                ###
 #############################################################################
+
+# file with the data to analyze
+# data_file = 'dataset_experimental/data_1point.csv'
+# data_file = 'dataset_experimental/data_all.csv'
+data_file = 'dataset_simulated/data.csv'
+
 # Base station calibration parameters
 fcal = {'phase1-B': -0.005335,
         'phase1-C': -0.004791}
@@ -45,7 +52,7 @@ def LH2_count_to_pixels(count_1, count_2, mode):
 
     # Project the angles into the z=1 image plane
     pts_lighthouse = np.zeros((len(count_1),2))
-    for i in range(len(c1A)):
+    for i in range(len(count_1)):
         pts_lighthouse[i,0] = -np.tan(azimuth[i])
         pts_lighthouse[i,1] = -np.sin(a2[i]/2-a1[i]/2-60*np.pi/180)/np.tan(np.pi/6)
 
@@ -59,8 +66,6 @@ def LH2_angles_to_pixels(azimuth, elevation):
     pts_lighthouse = np.array([np.tan(azimuth),         # horizontal pixel  
                                np.tan(elevation)]).T    # vertical   pixel 
     return pts_lighthouse
-
-
 
 def solve_3d_scene(pts_a, pts_b):
     """
@@ -225,7 +230,7 @@ def plot_distance_histograms(x_dist, y_dist, z_dist):
 
     plt.show()
 
-def plot_reconstructed_3D_scene(point3D, t_star, R_star):
+def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     """
     Plot a 3D scene with the traingulated points previously calculated
     ---
@@ -233,6 +238,7 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star):
     point3D - array [3,N] - triangulated points of the positions of the LH2 receveier
     t_star  - array [3,1] - Translation vector between the first and the second lighthouse basestation
     R_star  - array [3,3] - Rotation matrix between the first and the second lighthouse basestation
+    df      - dataframe   - dataframe holding the real positions of the gridpoints
     """
     ## Plot the two coordinate systems
     #  x is blue, y is red, z is green
@@ -256,13 +262,32 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star):
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],z_axis[0],z_axis[2],-z_axis[1],color='xkcd:green',lw=3)
     ax.scatter(point3D[:,0],point3D[:,2],-point3D[:,1])
 
+
+    # Check if this is the simulated dataset. If yes, plot the correct basestation pose and points
+    if 'simulated' in data_file:
+        with open("dataset_simulated/basestation.json", "r") as json_file:
+            lh2_pose = json.load(json_file)
+
+        lha_t = np.array(lh2_pose['lha_t'])
+        lha_R = np.array(lh2_pose['lha_R'])
+        lhb_t = np.array(lh2_pose['lhb_t'])
+        lhb_R = np.array(lh2_pose['lhb_R'])
+
+        if df is not None:
+            real_point3D = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
+            ax.scatter(real_point3D[:,0],real_point3D[:,1],real_point3D[:,2], color='xkcd:green', label='ground truth')
+
+        arrow = np.array([1,0,0]).reshape((-1,1))
+        ax.quiver(lha_t[0],lha_t[1],lha_t[2], (lha_R @ arrow)[0], (lha_R @ arrow)[1], (lha_R @ arrow)[2], length=0.2, color='xkcd:red' )
+        ax.quiver(lhb_t[0],lhb_t[1],lhb_t[2], (lhb_R @ arrow)[0], (lhb_R @ arrow)[1], (lhb_R @ arrow)[2], length=0.2, color='xkcd:red' )
+        ax.scatter(lha_t[0],lha_t[1],lha_t[2], color='xkcd:red', label='LH1')
+        ax.scatter(lhb_t[0],lhb_t[1],lhb_t[2], color='xkcd:red', label='LH2')
+
+    # Plot the real 
     ax.text(-0.18,-0.1,0,s='LHA')
     ax.text(t_star_rotated[0], t_star_rotated[2], -t_star_rotated[1],s='LHB')
 
-    # Set axis limits
-    ax.set_xlim3d(-1,1)
-    ax.set_ylim3d(-1,1)
-    ax.set_zlim3d(-1,1)
+    ax.axis('equal')
 
     plt.show()
 
@@ -299,7 +324,7 @@ def plot_projected_LH_views(pts_a, pts_b):
 if __name__ == "__main__":
 
     # Import data
-    df=pd.read_csv('dataset_experimental/data_1point.csv', index_col=0)
+    df=pd.read_csv(data_file, index_col=0)
 
     # Project sweep angles on to the z=1 image plane
     if 'azimuth_A' not in df.columns:   
@@ -326,8 +351,9 @@ if __name__ == "__main__":
     df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
     df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
 
-    # Scale the scene to real size and compute 
-    df = scale_scene_to_real_size(df)
+    # Scale the scene to real size
+    if 'experimental' in data_file:
+        df = scale_scene_to_real_size(df)
 
     # Compute distances between gridpoints
     x_dist, y_dist, z_dist = compute_distance_between_grid_points(df)
@@ -336,11 +362,12 @@ if __name__ == "__main__":
     #############################################################################
     ###                             Plotting                                  ###
     #############################################################################
-    # Plot X,Y,Z gridpoint distance histograms
-    plot_distance_histograms(x_dist, y_dist, z_dist)
+    # Plot X,Y,Z gridpoint distance histograms. If the dataset is real.
+    if 'experimental' in data_file:
+        plot_distance_histograms(x_dist, y_dist, z_dist)
 
     # Plot 3D reconstructed scene
-    plot_reconstructed_3D_scene(point3D, t_star, R_star)
+    plot_reconstructed_3D_scene(point3D, t_star, R_star, df)
 
     # Plot projected views of the lighthouse
     plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
