@@ -29,9 +29,14 @@ there are 3 datasets available
 2. Select the dataset you want to process.
 3. Run the following command from the root folder.
 
-`$ python lh2_3d_analysis.py`
+- `$ python lh2_3d_analysis.py`
 
 A few plots should appear with the results of the analysis
+
+### Run the tests
+From the repository's root folder run the command.
+
+- `$ pytest tests`
 
 
 ## Repository Organization
