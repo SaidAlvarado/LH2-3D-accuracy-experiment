@@ -10,6 +10,9 @@ To run this code, your Python installation must have the following modules insta
 - Pandas
 - Matplotlib
 - OpenCV
+from the root of the folder following command to install them
+
+`$ pip install -r requirements.txt`
 
 ### Selecting the dataset to use
 
