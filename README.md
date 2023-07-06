@@ -5,12 +5,7 @@ Repository to hold the dataset and processing algorithm for the 3D experiments o
 ## Getting Started
 
 ### Requirements
-To run this code, your Python installation must have the following modules installed.
-- Numpy
-- Pandas
-- Matplotlib
-- OpenCV
-from the root of the folder following command to install them
+To install the required modules, run the following command from the root folder.
 
 `$ pip install -r requirements.txt`
 
