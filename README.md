@@ -35,6 +35,11 @@ there are 3 datasets available
 
 A few plots should appear with the results of the analysis
 
+### Run the tests
+From the repositoriy's root folder run the command.
+
+`$ pytest tests`
+
 
 ## Repository Organization
 
