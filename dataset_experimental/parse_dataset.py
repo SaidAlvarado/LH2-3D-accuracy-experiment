@@ -11,7 +11,7 @@ import cv2
 ###                                Options                                ###
 #############################################################################
 ## To use all the data (instead of a measurement per grip point), set this to true
-ALL_DATA = False
+ALL_DATA = True
 # Base station calibration parameters
 fcal = {'phase1-B': -0.005335,
         'phase1-C': -0.004791}
@@ -22,7 +22,7 @@ fcal = {'phase1-B': -0.005335,
 #############################################################################
 
 ## Read the Timestamps to get which point correspond to which positions
-with open("dataset_experimental/raw data/timestamps.json", "r") as file:
+with open("dataset_experimental/raw_data/timestamps.json", "r") as file:
     time_data = json.load(file)
 
 # This is the important number
@@ -42,7 +42,7 @@ log_pattern = re.compile(r'timestamp=(?P<timestamp>.*?) .*? sweep_0_poly=(?P<swe
 data = []
 
 # Open the log file and iterate over each line
-with open("dataset_experimental/raw data/pydotbot.log", "r") as log_file:
+with open("dataset_experimental/raw_data/pydotbot.log", "r") as log_file:
     for line in log_file:
         # Extract timestamp and source from the line
         match = log_pattern.search(line)

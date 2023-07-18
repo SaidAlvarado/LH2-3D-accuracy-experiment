@@ -9,27 +9,27 @@ from scipy.spatial.transform import Rotation
 #############################################################################
 ###                Define LH2 and point positions                         ###
 #############################################################################
-# LH2 A, pos and rotation
+# LH2 A, pos and rotation (this is a LH -> world convertion)
 lha_t = np.array([0,0,0])
-lha_R, _ = cv2.Rodrigues(np.array([0, 0, np.pi/4 ]))
+lha_R, _ = cv2.Rodrigues(np.array([0, np.pi/4, 0]))    # tilted right (towards X+)
 # LH2 B, pos and rotation
 lhb_t = np.array([3,0,0])
-lhb_R, _ = cv2.Rodrigues(np.array([0, 0, 3*np.pi/4 ]))
-# Receiver
-points = np.array([[1,1,0],
-                   [2,1,0],
-                   [1,2,0],
-                   [2,2,0],
-                   [1,3,0],
-                   [2,3,0],
-                   [1,1,1],
-                   [2,1,1],
-                   [1,2,1],
-                   [2,2,1],
-                   [1,3,1],
-                   [2,3,1]], dtype=float)
+lhb_R, _ = cv2.Rodrigues(np.array([0, -np.pi/4, 0 ]))  # tilted left (towards X-)
+points = np.array([[1,0,1],
+                   [2,0,1],
+                   [1,0,2],
+                   [2,0,2],
+                   [1,0,3],
+                   [2,0,3],
+                   [1,-1,1],
+                   [2,-1,1],
+                   [1,-1,2],
+                   [2,-1,2],
+                   [1,-1,3],
+                   [2,-1,3]], dtype=float)
 
 
+obj_points = points - np.array([1,0,1])
 
 #############################################################################
 ###                   Elevation and Azimuth angle                         ###
@@ -40,17 +40,17 @@ points = np.array([[1,1,0],
 p_a = lha_R.T @ (points - lha_t).T
 p_b = lhb_R.T @ (points - lhb_t).T
 
-elevation_a = np.arctan2(p_a[2], np.sqrt(p_a[0]**2 + p_a[1]**2))
-elevation_b = np.arctan2(p_b[2], np.sqrt(p_b[0]**2 + p_b[1]**2))
+elevation_a = np.arctan2( p_a[1], np.sqrt(p_a[0]**2 + p_a[2]**2))
+elevation_b = np.arctan2( p_b[1], np.sqrt(p_b[0]**2 + p_b[2]**2))
 
-azimuth_a = np.arctan2(p_a[1], p_a[0])
-azimuth_b = np.arctan2(p_b[1], p_b[0])
+azimuth_a = np.arctan2(p_a[0], p_a[2]) # XZ plan angle, 0 == +Z, positive numbers goes to +X
+azimuth_b = np.arctan2(p_b[0], p_b[2])
 
 #############################################################################
 ###                             Cristobal Code                            ###
 #############################################################################
 
-pts_lighthouse_A = np.array([np.tan(azimuth_a),       # horizontal pixel  (we want negative angles to go to pixels to the right of the "image", so we need to invert the sign)
+pts_lighthouse_A = np.array([np.tan(azimuth_a),       # horizontal pixel 
                              np.tan(elevation_a)]).T  # vertical   pixel 
 
 pts_lighthouse_B = np.array([np.tan(azimuth_b),       # horizontal pixel 
@@ -60,14 +60,15 @@ pts_lighthouse_B = np.array([np.tan(azimuth_b),       # horizontal pixel
 
 # Obtain translation and rotation vectors
 E, mask = cv2.findFundamentalMat(pts_lighthouse_A, pts_lighthouse_B, cv2.FM_LMEDS)
-# E, mask = cv2.findEssentialMat(pts_lighthouse_A, pts_lighthouse_B, focal=1.0, pp = np.array([0,0]), method = cv2.FM_LMEDS)
 _, R_star, t_star, mask = cv2.recoverPose(E, pts_lighthouse_A, pts_lighthouse_B)
 
 # Triangulate the points
 R_1 = np.eye(3,dtype='float64')
 t_1 = np.zeros((3,1),dtype='float64')
 
-P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+# P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+# P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])    # http://www.info.hiroshima-cu.ac.jp/~miyazaki/knowledge/teche0053.html this is how you invert a projection matrix
 P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
 
 point3D = cv2.triangulatePoints(P1,P2,pts_lighthouse_B.T, pts_lighthouse_A.T).T
@@ -86,9 +87,11 @@ point3D = point3D[:, :3] / point3D[:, 3:4]
 #############################################################################
 ###                          SolvePnP                                 ###
 #############################################################################
-obj_points = points
-img_points = pts_lighthouse_A
-retval, r_pnp, t_pnp = cv2.solvePnP(obj_points, img_points, np.eye(3), np.zeros((4,1)))
+# obj_points = points.copy()
+# obj_points[:,0] -= 1
+# obj_points[:,1] -= 1
+img_points = pts_lighthouse_B
+retval, r_pnp, t_pnp = cv2.solvePnP(obj_points, img_points, np.eye(3), np.zeros((4,1)), flags=cv2.SOLVEPNP_ITERATIVE)
 # R_a, _jac = cv2.Rodrigues(r_pnp) # convert the rotation vecotr to a rotation matrix
 
 #############################################################################
@@ -145,6 +148,8 @@ lh1_ax.set_ylabel('V [px]')
 lh2_ax.set_xlabel('U [px]')
 lh2_ax.set_ylabel('V [px]')
 #
+lh1_ax.invert_yaxis()
+lh2_ax.invert_yaxis()
 # plt.show()
 
 ######################################### 3D Plotting #######################################  
@@ -156,7 +161,7 @@ fig2 = plt.figure()
 ax2 = fig2.add_subplot(111, projection='3d')
 
 # Plot the lighthouse orientation
-arrow = np.array([1,0,0]).reshape((-1,1))
+arrow = np.array([0,0,1]).reshape((-1,1))
 ax2.quiver(lha_t[0],lha_t[1],lha_t[2], (lha_R @ arrow)[0], (lha_R @ arrow)[1], (lha_R @ arrow)[2], length=0.2, color='xkcd:red' )
 ax2.quiver(lhb_t[0],lhb_t[1],lhb_t[2], (lhb_R @ arrow)[0], (lhb_R @ arrow)[1], (lhb_R @ arrow)[2], length=0.2, color='xkcd:red' )
 ax2.quiver(t_1[0],t_1[1],t_1[2], (R_1 @ arrow)[0], (R_1 @ arrow)[1], (R_1 @ arrow)[2], length=0.2, color='xkcd:orange' )
@@ -169,6 +174,10 @@ ax2.scatter(lhb_t[0],lhb_t[1],lhb_t[2], color='xkcd:red', label='LH2')
 ax2.scatter(t_1[0],t_1[1],t_1[2], color='xkcd:orange', label='triang LH1')
 ax2.scatter(t_star[0],t_star[1],t_star[2], color='xkcd:orange', label='triang LH2')
 
+ax2.set_xlabel('X [mm]')
+ax2.set_ylabel('Y [mm]')
+ax2.set_zlabel('Z [mm]')
+
 ax2.axis('equal')
 ax2.legend()
 
@@ -178,3 +187,4 @@ ax2.legend()
 # ax.set_zlim3d(-1,1)
 
 plt.show()
+a=1

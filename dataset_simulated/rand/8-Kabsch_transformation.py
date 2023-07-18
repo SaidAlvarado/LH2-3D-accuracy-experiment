@@ -12,8 +12,8 @@ import cv2
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
-# data_file = 'dataset_experimental/data_all.csv'
-data_file = 'dataset_simulated/data.csv'
+data_file = 'dataset_experimental/data_all.csv'
+# data_file = 'dataset_simulated/data.csv'
 
 # Base station calibration parameters
 fcal = {'phase1-B': -0.005335,
@@ -24,12 +24,12 @@ dist_a = np.array([[1.0409, -2.4617, 0.1403, -0.0466, 2.6625]])
 dist_b = np.array([[0.0924, -0.6955, -0.0070, 0.0334, 0.7030]])
 
 # Define the intrinsic camera matrices of the LH2 basestations
-Mat_A = np.array([[ 1.0282    ,  0.0396    , 0.0447],
-                  [ 0.        ,  0.8734    ,-0.0117],
+Mat_A = np.array([[ 0.9646    ,  0.0017    , -0.0169],
+                  [ 0.        ,  0.8706    ,0.0050],
                   [ 0.        ,  0.        ,  1.  ]])
 
-Mat_B = np.array([[ 1.0296    ,-0.0110     ,-0.0672],
-                  [ 0.        , 0.9175,     0.0158],
+Mat_B = np.array([[ 1.0256    , 0.0033     ,-0.0474],
+                  [ 0.        , 0.9174,     -0.0129],
                   [ 0.        ,  0.        ,  1.        ]])
 
 #############################################################################
@@ -47,18 +47,18 @@ def LH2_count_to_pixels(count_1, count_2, mode):
     periods = [959000, 957000]
 
     # Translate points into position from each camera
-    a1 = (count_1*8/periods[mode])*2*np.pi  # Convert counts to angles traveled in the weird 4modedeg planes, in radians
+    a1 = (count_1*8/periods[mode])*2*np.pi  # Convert counts to angles traveled in the weird 40deg planes, in radians
     a2 = (count_2*8/periods[mode])*2*np.pi   
 
     # Transfor sweep angles to azimuth and elevation coordinates
     azimuth   = (a1+a2)/2 
-    # elevation = np.pi/2 - np.arctan2(np.sin(a2/2-a1/2-60*np.pi/180),np.tan(np.pi/6))
+    elevation = np.pi/2 - np.arctan2(np.sin(a2/2-a1/2-60*np.pi/180),np.tan(np.pi/6)) 
 
     # Project the angles into the z=1 image plane
     pts_lighthouse = np.zeros((len(count_1),2))
     for i in range(len(count_1)):
         pts_lighthouse[i,0] = -np.tan(azimuth[i])
-        pts_lighthouse[i,1] = -np.sin(a2[i]/2-a1[i]/2-60*np.pi/180)/np.tan(np.pi/6)
+        pts_lighthouse[i,1] = -np.sin(a2[i]/2-a1[i]/2-60*np.pi/180)/np.tan(np.pi/6) * 1/np.cos(azimuth[i])
 
     # Return the projected points
     return pts_lighthouse
@@ -77,7 +77,8 @@ def solve_3d_scene(pts_a, pts_b):
     """
     # Obtain translation and rotation vectors
     F, mask = cv2.findFundamentalMat(pts_a, pts_b, cv2.FM_LMEDS)
-    points, R_star, t_star, mask = cv2.recoverPose( F, pts_a, pts_b)
+    # points, R_star, t_star, mask = cv2.recoverPose(Mat_A @ F @ Mat_B, pts_a, pts_b)
+    points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
 
     # Triangulate the points
     R_1 = np.eye(3,dtype='float64')
@@ -90,8 +91,10 @@ def solve_3d_scene(pts_a, pts_b):
     # inv(t) => -t 
     # That's where all the transpositions and negatives come from.
     # Source: https://stackoverflow.com/a/45722936
-    P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
-    P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    # P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
+    # P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+    P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
     # The projection matrix is the intrisic matrix of the camera multiplied by the extrinsic matrix.
     # When the intrinsic matrix is the identity.
     # The results is the [ Rotation | translation ] in a 3x4 matrix
@@ -249,6 +252,7 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    ax.set_proj_type('ortho')
     # First lighthouse:
     ax.quiver(0,0,0,0.1,0,0,color='xkcd:blue',lw=3)
     ax.quiver(0,0,0,0,0,-0.1,color='xkcd:red',lw=3)
@@ -261,11 +265,10 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     x_axis = np.array([0.1,0,0])@np.linalg.inv(R_star)
     y_axis = np.array([0,0.1,0])@np.linalg.inv(R_star)
     z_axis = np.array([0,0,0.1])@np.linalg.inv(R_star)
-    ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],x_axis[0],x_axis[2],-x_axis[1],color='xkcd:blue',lw=3)
+    ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],x_axis[0],x_axis[2],-x_axis[1], color='xkcd:blue',lw=3)
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],y_axis[0],y_axis[2],-y_axis[1],color='xkcd:red',lw=3)
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],z_axis[0],z_axis[2],-z_axis[1],color='xkcd:green',lw=3)
-    ax.scatter(point3D[:,0],point3D[:,2],-point3D[:,1])
-
+    ax.scatter(point3D[:,0],point3D[:,2],-point3D[:,1], alpha=0.1)
 
     # Check if this is the simulated dataset. If yes, plot the correct basestation pose and points
     if 'simulated' in data_file:
@@ -292,6 +295,11 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     ax.text(t_star_rotated[0], t_star_rotated[2], -t_star_rotated[1],s='LHB')
 
     ax.axis('equal')
+    ax.set_title('Corrected - Elevation Angle')
+    ax.set_xlabel('X [mm]')
+    ax.set_ylabel('Y [mm]')
+    ax.set_zlabel('Z [mm]')
+
 
     plt.show()
 
@@ -314,17 +322,64 @@ def plot_projected_LH_views(pts_a, pts_b):
     for ax in axs:
         ax.grid()
         ax.legend()
-    lh1_ax.axis('equal')
-    lh2_ax.axis('equal')
-    # 
-    lh1_ax.set_xlabel('U [px]')
-    lh1_ax.set_ylabel('V [px]')
-    #
-    lh2_ax.set_xlabel('U [px]')
-    lh2_ax.set_ylabel('V [px]')
-    #
+        ax.axis('equal')
+        ax.set_xlabel('U [px]')
+        ax.set_ylabel('V [px]')
+        ax.invert_yaxis()
+
     plt.show()
 
+
+def plot_transformed_3D_data(df):
+    """
+    Bring the reconstructed data points to the origin, and align it to the  axes.
+    This will make it easy to plot the error. 
+    """
+
+    # Grab one point for each axis, plus the origin. Origin=(0,0,0), X=(240,0,0), Y=(0,120,0), Z=(0,0,160) [mm]
+    p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+
+
+    fig2 = plt.figure()
+    ax2 = fig2.add_subplot(111, projection='3d')
+    ax2.set_proj_type('ortho')
+
+    # Plot the ground truth points
+    real_points = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)  # Plot just a single point per grid position to save on computational power.
+    ax2.scatter(real_points[:,0], real_points[:,1], real_points[:,2], alpha=0.5 ,color='xkcd:pink', label="Ground Truth")
+    # Plot real dataaset points
+    points = df[['LH_x','LH_y','LH_z']].to_numpy()
+    ax2.scatter(points[:,0], points[:,1], points[:,2], alpha=0.01, color='xkcd:cyan', label="Real Data")
+
+    # Plot special colors for the Origin and X,Y,Z points
+    ax2.scatter(p000[0], p000[1], p000[2], alpha=1, color='xkcd:black', label="Origin")
+    ax2.scatter(p100[0], p100[1], p100[2], alpha=1, color='xkcd:blue', label="X")
+    ax2.scatter(p010[0], p010[1], p010[2], alpha=1, color='xkcd:red', label="Y")
+    ax2.scatter(p001[0], p001[1], p001[2], alpha=1, color='xkcd:green', label="Z")
+
+    # Corrected points
+    correct_points = points - p000
+    ax2.scatter(correct_points[:,0], correct_points[:,1], correct_points[:,2], alpha=0.01, color='xkcd:orange', label="Corrected Data")
+
+    R = np.vstack([  (p100 - p000),
+                     (p010 - p000),
+                     (p001 - p000)])
+    R = R / np.linalg.norm(R)
+
+    ax2.axis('equal')
+    ax2.legend()
+
+    # ax2.set_title('Tangent projection')
+    ax2.set_xlabel('X [mm]')
+    ax2.set_ylabel('Y [mm]')
+    ax2.set_zlabel('Z [mm]')
+
+    plt.show()
+
+    # ax.scatter(p000[:,0],p000[:,2],-p000[:,1], color='green')
 #############################################################################
 ###                                  Main                                 ###
 #############################################################################
@@ -371,11 +426,13 @@ if __name__ == "__main__":
     ###                             Plotting                                  ###
     #############################################################################
     # Plot X,Y,Z gridpoint distance histograms. If the dataset is real.
-    if 'experimental' in data_file:
-        plot_distance_histograms(x_dist, y_dist, z_dist)
+    # if 'experimental' in data_file:
+    #     plot_distance_histograms(x_dist, y_dist, z_dist)
 
     # Plot 3D reconstructed scene
-    plot_reconstructed_3D_scene(point3D, t_star, R_star, df)
+    # plot_reconstructed_3D_scene(point3D, t_star, R_star, df)
 
     # Plot projected views of the lighthouse
-    plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
+    # plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
+
+    plot_transformed_3D_data(df)

@@ -11,9 +11,9 @@ import cv2
 #############################################################################
 
 # file with the data to analyze
-# data_file = 'dataset_experimental/data_1point.csv'
+data_file = 'dataset_experimental/data_1point.csv'
 # data_file = 'dataset_experimental/data_all.csv'
-data_file = 'dataset_simulated/data.csv'
+# data_file = 'dataset_simulated/data.csv'
 
 # Base station calibration parameters
 fcal = {'phase1-B': -0.005335,
@@ -24,12 +24,12 @@ dist_a = np.array([[1.0409, -2.4617, 0.1403, -0.0466, 2.6625]])
 dist_b = np.array([[0.0924, -0.6955, -0.0070, 0.0334, 0.7030]])
 
 # Define the intrinsic camera matrices of the LH2 basestations
-Mat_A = np.array([[ 1.0282    ,  0.0396    , 0.0447],
-                  [ 0.        ,  0.8734    ,-0.0117],
+Mat_A = np.array([[ 0.9646    ,  0.0017    , -0.0169],
+                  [ 0.        ,  0.8706    ,0.0050],
                   [ 0.        ,  0.        ,  1.  ]])
 
-Mat_B = np.array([[ 1.0296    ,-0.0110     ,-0.0672],
-                  [ 0.        , 0.9175,     0.0158],
+Mat_B = np.array([[ 1.0256    , 0.0033     ,-0.0474],
+                  [ 0.        , 0.9174,     -0.0129],
                   [ 0.        ,  0.        ,  1.        ]])
 
 #############################################################################
@@ -47,18 +47,18 @@ def LH2_count_to_pixels(count_1, count_2, mode):
     periods = [959000, 957000]
 
     # Translate points into position from each camera
-    a1 = (count_1*8/periods[mode])*2*np.pi  # Convert counts to angles traveled in the weird 4modedeg planes, in radians
-    a2 = (count_2*8/periods[mode])*2*np.pi   
+    a1 = (count_1*8/periods[mode])*2*np.pi # Convert counts to angles traveled in the weird 40deg planes, in radians
+    a2 = (count_2*8/periods[mode])*2*np.pi
 
     # Transfor sweep angles to azimuth and elevation coordinates
     azimuth   = (a1+a2)/2 
-    # elevation = np.pi/2 - np.arctan2(np.sin(a2/2-a1/2-60*np.pi/180),np.tan(np.pi/6))
+    elevation = np.pi/2 - np.arctan2(np.sin(a2/2-a1/2-60*np.pi/180),np.tan(np.pi/6)) 
 
     # Project the angles into the z=1 image plane
     pts_lighthouse = np.zeros((len(count_1),2))
     for i in range(len(count_1)):
         pts_lighthouse[i,0] = -np.tan(azimuth[i])
-        pts_lighthouse[i,1] = -np.sin(a2[i]/2-a1[i]/2-60*np.pi/180)/np.tan(np.pi/6)
+        pts_lighthouse[i,1] = -np.sin(a2[i]/2-a1[i]/2-60*np.pi/180)/np.tan(np.pi/6) * 1/np.cos(azimuth[i])
 
     # Return the projected points
     return pts_lighthouse
@@ -77,7 +77,8 @@ def solve_3d_scene(pts_a, pts_b):
     """
     # Obtain translation and rotation vectors
     F, mask = cv2.findFundamentalMat(pts_a, pts_b, cv2.FM_LMEDS)
-    points, R_star, t_star, mask = cv2.recoverPose( F, pts_a, pts_b)
+    # points, R_star, t_star, mask = cv2.recoverPose(Mat_A @ F @ Mat_B, pts_a, pts_b)
+    points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
 
     # Triangulate the points
     R_1 = np.eye(3,dtype='float64')
@@ -90,8 +91,10 @@ def solve_3d_scene(pts_a, pts_b):
     # inv(t) => -t 
     # That's where all the transpositions and negatives come from.
     # Source: https://stackoverflow.com/a/45722936
-    P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
-    P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    # P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
+    # P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+    P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
     # The projection matrix is the intrisic matrix of the camera multiplied by the extrinsic matrix.
     # When the intrinsic matrix is the identity.
     # The results is the [ Rotation | translation ] in a 3x4 matrix
@@ -249,6 +252,7 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
+    ax.set_proj_type('ortho')
     # First lighthouse:
     ax.quiver(0,0,0,0.1,0,0,color='xkcd:blue',lw=3)
     ax.quiver(0,0,0,0,0,-0.1,color='xkcd:red',lw=3)
@@ -265,6 +269,8 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],y_axis[0],y_axis[2],-y_axis[1],color='xkcd:red',lw=3)
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],z_axis[0],z_axis[2],-z_axis[1],color='xkcd:green',lw=3)
     ax.scatter(point3D[:,0],point3D[:,2],-point3D[:,1])
+
+
 
 
     # Check if this is the simulated dataset. If yes, plot the correct basestation pose and points
@@ -292,6 +298,7 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     ax.text(t_star_rotated[0], t_star_rotated[2], -t_star_rotated[1],s='LHB')
 
     ax.axis('equal')
+    ax.set_title('Corrected - Elevation Angle')
 
     plt.show()
 
@@ -314,15 +321,11 @@ def plot_projected_LH_views(pts_a, pts_b):
     for ax in axs:
         ax.grid()
         ax.legend()
-    lh1_ax.axis('equal')
-    lh2_ax.axis('equal')
-    # 
-    lh1_ax.set_xlabel('U [px]')
-    lh1_ax.set_ylabel('V [px]')
-    #
-    lh2_ax.set_xlabel('U [px]')
-    lh2_ax.set_ylabel('V [px]')
-    #
+        ax.axis('equal')
+        ax.set_xlabel('U [px]')
+        ax.set_ylabel('V [px]')
+        ax.invert_yaxis()
+
     plt.show()
 
 #############################################################################

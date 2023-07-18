@@ -217,7 +217,7 @@ def Non_Planar_Calibration(point_3D, point_2D, WithRANSAC = False):
 #############################################################################
 
 ## Read the Timestamps to get which point correspond to which positions
-with open("Experiments/2 - 230504 - full grid - covering LH2/timestamps.json", "r") as file:
+with open("dataset_experimental/raw_data/timestamps.json", "r") as file:
     time_data = json.load(file)
 
 # This is the important number
@@ -237,7 +237,7 @@ log_pattern = re.compile(r'timestamp=(?P<timestamp>.*?) .*? sweep_0_poly=(?P<swe
 data = []
 
 # Open the log file and iterate over each line
-with open("Experiments/2 - 230504 - full grid - covering LH2/pydotbot.log", "r") as log_file:
+with open("dataset_experimental/raw_data/pydotbot.log", "r") as log_file:
     for line in log_file:
         # Extract timestamp and source from the line
         match = log_pattern.search(line)
@@ -429,10 +429,10 @@ pts_lighthouse_B = np.zeros((len(c1B),2))
 # Project points into the unit plane (double check this equations.... somewhere.)
 for i in range(len(c1A)):
   pts_lighthouse_A[i,0] = -np.tan(azimuthA[i])
-  pts_lighthouse_A[i,1] = -np.sin(a2A[i]/2-a1A[i]/2-60*np.pi/180)/np.tan(np.pi/6)
+  pts_lighthouse_A[i,1] = -np.sin(a2A[i]/2-a1A[i]/2-60*np.pi/180)/np.tan(np.pi/6)  * 1/np.cos(azimuthA[i])
 for i in range(len(c1B)):
   pts_lighthouse_B[i,0] = -np.tan(azimuthB[i])
-  pts_lighthouse_B[i,1] = -np.sin(a2B[i]/2-a1B[i]/2-60*np.pi/180)/np.tan(np.pi/6)
+  pts_lighthouse_B[i,1] = -np.sin(a2B[i]/2-a1B[i]/2-60*np.pi/180)/np.tan(np.pi/6)  * 1/np.cos(azimuthB[i])
 
 
 #############################################################################
@@ -449,8 +449,8 @@ sorted_df['LHB_proj_y'] = pts_lighthouse_B[:,1]
 
 # Now, run the actual calibration.
 point_3D = sorted_df[['real_x_mm', 'real_y_mm', 'real_z_mm']].values.astype(np.float32) # The calibration function ONLY likes float32, and wants the vector inside a list
-point_2D = sorted_df[['LHA_proj_x', 'LHA_proj_y']].values.astype(np.float32)
-Non_Planar_Calibration(point_3D, point_2D, WithRANSAC = True)
+point_2D = sorted_df[['LHB_proj_x', 'LHB_proj_y']].values.astype(np.float32)
+Non_Planar_Calibration(point_3D, point_2D, WithRANSAC = False)
 
 
 
