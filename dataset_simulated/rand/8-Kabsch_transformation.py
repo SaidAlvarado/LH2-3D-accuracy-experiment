@@ -10,6 +10,8 @@ import cv2
 ###                                Options                                ###
 #############################################################################
 
+USE_CAMERA_MATRIX = False    
+
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
 data_file = 'dataset_experimental/data_all.csv'
@@ -77,8 +79,10 @@ def solve_3d_scene(pts_a, pts_b):
     """
     # Obtain translation and rotation vectors
     F, mask = cv2.findFundamentalMat(pts_a, pts_b, cv2.FM_LMEDS)
-    # points, R_star, t_star, mask = cv2.recoverPose(Mat_A @ F @ Mat_B, pts_a, pts_b)
-    points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
+    if USE_CAMERA_MATRIX:
+        points, R_star, t_star, mask = cv2.recoverPose(Mat_A @ F @ Mat_B, pts_a, pts_b)
+    else:
+        points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
 
     # Triangulate the points
     R_1 = np.eye(3,dtype='float64')
@@ -91,10 +95,12 @@ def solve_3d_scene(pts_a, pts_b):
     # inv(t) => -t 
     # That's where all the transpositions and negatives come from.
     # Source: https://stackoverflow.com/a/45722936
-    # P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
-    # P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
-    P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
-    P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    if USE_CAMERA_MATRIX:
+        P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
+        P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    else:
+        P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+        P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
     # The projection matrix is the intrisic matrix of the camera multiplied by the extrinsic matrix.
     # When the intrinsic matrix is the identity.
     # The results is the [ Rotation | translation ] in a 3x4 matrix
@@ -191,6 +197,35 @@ def compute_distance_between_grid_points(df):
     z_dist = z_dist[z_dist <= 500]
 
     return x_dist, y_dist, z_dist
+
+
+def correct_perspective(df):
+    """
+    Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison.
+    """
+    # Grab one point for each axis, plus the origin. Origin=(0,0,0), X=(240,0,0), Y=(0,120,0), Z=(0,0,160) [mm]
+    p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+
+    # Get the reconstructed points
+    points = df[['LH_x','LH_y','LH_z']].to_numpy()
+
+    # Calculate rotation matrix
+    R = np.vstack([  (p100 - p000) / np.linalg.norm((p100 - p000)),
+                     (p010 - p000) / np.linalg.norm((p010 - p000)),
+                     (p001 - p000) / np.linalg.norm((p001 - p000))])
+
+    # Correct points
+    correct_points = R @ (points - p000).T
+    correct_points = correct_points.T
+
+    # Update dataframe
+    df['Rt_x'] = correct_points[:,0]
+    df['Rt_y'] = correct_points[:,1]
+    df['Rt_z'] = correct_points[:,2]
+    return df
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
     """
@@ -329,46 +364,23 @@ def plot_projected_LH_views(pts_a, pts_b):
 
     plt.show()
 
-
 def plot_transformed_3D_data(df):
     """
-    Bring the reconstructed data points to the origin, and align it to the  axes.
+    Plot the difference between the ground truth and the reconstructed data.
     This will make it easy to plot the error. 
     """
-
-    # Grab one point for each axis, plus the origin. Origin=(0,0,0), X=(240,0,0), Y=(0,120,0), Z=(0,0,160) [mm]
-    p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-
-
+    # Create a figure to plot
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111, projection='3d')
     ax2.set_proj_type('ortho')
 
     # Plot the ground truth points
     real_points = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)  # Plot just a single point per grid position to save on computational power.
-    ax2.scatter(real_points[:,0], real_points[:,1], real_points[:,2], alpha=0.5 ,color='xkcd:pink', label="Ground Truth")
-    # Plot real dataaset points
-    points = df[['LH_x','LH_y','LH_z']].to_numpy()
-    ax2.scatter(points[:,0], points[:,1], points[:,2], alpha=0.01, color='xkcd:cyan', label="Real Data")
-
-    # Plot special colors for the Origin and X,Y,Z points
-    ax2.scatter(p000[0], p000[1], p000[2], alpha=1, color='xkcd:black', label="Origin")
-    ax2.scatter(p100[0], p100[1], p100[2], alpha=1, color='xkcd:blue', label="X")
-    ax2.scatter(p010[0], p010[1], p010[2], alpha=1, color='xkcd:red', label="Y")
-    ax2.scatter(p001[0], p001[1], p001[2], alpha=1, color='xkcd:green', label="Z")
-
-    # Corrected points
-    correct_points = points - p000
-    ax2.scatter(correct_points[:,0], correct_points[:,1], correct_points[:,2], alpha=0.01, color='xkcd:orange', label="Corrected Data")
-
-    R = np.vstack([  (p100 - p000),
-                     (p010 - p000),
-                     (p001 - p000)])
-    R = R / np.linalg.norm(R)
-
+    ax2.scatter(real_points[:,0], real_points[:,1], real_points[:,2], alpha=0.5 ,color='xkcd:green', label="Ground Truth")
+    # Plot real dataset points
+    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
+    ax2.scatter(points[:,0], points[:,1], points[:,2], alpha=0.05, color='xkcd:blue', label="Real Data")
+ 
     ax2.axis('equal')
     ax2.legend()
 
@@ -420,6 +432,9 @@ if __name__ == "__main__":
 
     # Compute distances between gridpoints
     x_dist, y_dist, z_dist = compute_distance_between_grid_points(df)
+
+    # Bring reconstructed data to the origin for easier comparison
+    df = correct_perspective(df)
 
 
     #############################################################################
