@@ -213,10 +213,18 @@ def correct_perspective(df):
     # TODO - the transformation is giving way more important to places with more points, and skewing the results.
     # Get a dataset which is just a point by point average.
 
+    B = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)
+    A = np.empty_like(B, dtype=float)
+    for i in range(B.shape[0]):
+        A[i] = df.loc[(df['real_x_mm'] == B[i,0])  & (df['real_y_mm'] == B[i,1]) & (df['real_z_mm'] == B[i,2]), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+
     # Get the reconstructed points
-    A = df[['LH_x','LH_y','LH_z']].to_numpy().T
-    # Get reference points
-    B = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy().T
+    A2 = df[['LH_x','LH_y','LH_z']].to_numpy().T
+
+    # Convert the point to column vectors,
+    # to match twhat the SVD algorithm expects
+    A = A.T
+    B = B.T
 
     # Get the centroids
     A_centroid = A.mean(axis=1).reshape((-1,1))
@@ -237,7 +245,7 @@ def correct_perspective(df):
     # Get the ideal translation
     t = B_centroid - R @ A_centroid
 
-    correct_points = (R@A + t)
+    correct_points = (R@A2 + t)
     correct_points = correct_points.T
 
     # Update dataframe
