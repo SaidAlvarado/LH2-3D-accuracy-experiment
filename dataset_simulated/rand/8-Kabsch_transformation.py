@@ -198,27 +198,18 @@ def compute_distance_between_grid_points(df):
 
     return x_dist, y_dist, z_dist
 
-
 def correct_perspective(df):
     """
     Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison.
     Using an SVD, according to: https://nghiaho.com/?page_id=671
     """
-    # Grab one point for each axis, plus the origin. Origin=(0,0,0), X=(240,0,0), Y=(0,120,0), Z=(0,0,160) [mm]
-    # p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    # p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    # p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    # p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-
-    # TODO - the transformation is giving way more important to places with more points, and skewing the results.
-    # Get a dataset which is just a point by point average.
-
+    
     B = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)
     A = np.empty_like(B, dtype=float)
     for i in range(B.shape[0]):
         A[i] = df.loc[(df['real_x_mm'] == B[i,0])  & (df['real_y_mm'] == B[i,1]) & (df['real_z_mm'] == B[i,2]), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
 
-    # Get the reconstructed points
+    # Get  all the reconstructed points
     A2 = df[['LH_x','LH_y','LH_z']].to_numpy().T
 
     # Convert the point to column vectors,
@@ -419,6 +410,43 @@ def plot_transformed_3D_data(df):
     plt.show()
 
     # ax.scatter(p000[:,0],p000[:,2],-p000[:,1], color='green')
+
+def plot_error_histogram(df):
+    """ 
+    Calculate and plot a histogram  of the error of the reconstructed points, vs. 
+    the ground truth.
+    """
+    # Extract needed data from the main dataframe
+    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
+    ground_truth = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
+
+    # Calculate distance between points and their ground truth
+    errors =  np.linalg.norm(ground_truth - points, axis=1)
+    # print the mean and standard deviation
+    print(f"Mean = {errors.mean()}")
+    print(f"Standard deviation = {errors.std()}")
+
+    # prepare the plot
+    fig = plt.figure(layout="constrained")
+    gs = GridSpec(3, 3, figure = fig)
+    hist_ax    = fig.add_subplot(gs[0:3, 0:3])
+    axs = (hist_ax,)
+
+    # Plot the error histogram
+    n, bins, patches = hist_ax.hist(errors, 50, density=False)
+    hist_ax.axvline(x=errors.mean(), color='red', label="Mean")
+
+    for ax in axs:
+        ax.grid()
+        ax.legend()
+    
+    hist_ax.set_xlabel('Distance Error [mm]')
+    hist_ax.set_ylabel('Measurements')
+
+    plt.show()
+
+    return
+
 #############################################################################
 ###                                  Main                                 ###
 #############################################################################
@@ -477,4 +505,6 @@ if __name__ == "__main__":
     # Plot projected views of the lighthouse
     # plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
 
+    # Plot superimposed "captured data" vs. "ground truth", and error histogram
     plot_transformed_3D_data(df)
+    plot_error_histogram(df)
