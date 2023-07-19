@@ -198,7 +198,6 @@ def compute_distance_between_grid_points(df):
 
     return x_dist, y_dist, z_dist
 
-
 def correct_perspective(df):
     """
     Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison.
@@ -226,6 +225,7 @@ def correct_perspective(df):
     df['Rt_y'] = correct_points[:,1]
     df['Rt_z'] = correct_points[:,2]
     return df
+
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
     """
@@ -391,7 +391,42 @@ def plot_transformed_3D_data(df):
 
     plt.show()
 
-    # ax.scatter(p000[:,0],p000[:,2],-p000[:,1], color='green')
+def plot_error_histogram(df):
+    """ 
+    Calculate and plot a histogram  of the error of the reconstructed points, vs. 
+    the ground truth.
+    """
+    # Extract needed data from the main dataframe
+    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
+    ground_truth = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
+
+    # Calculate distance between points and their ground truth
+    errors =  np.linalg.norm(ground_truth - points, axis=1)
+    # print the mean and standard deviation
+    print(f"Mean = {errors.mean()}")
+    print(f"Standard deviation = {errors.std()}")
+
+    # prepare the plot
+    fig = plt.figure(layout="constrained")
+    gs = GridSpec(3, 3, figure = fig)
+    hist_ax    = fig.add_subplot(gs[0:3, 0:3])
+    axs = (hist_ax,)
+
+    # Plot the error histogram
+    n, bins, patches = hist_ax.hist(errors, 50, density=False)
+    hist_ax.axvline(x=errors.mean(), color='red', label="Mean")
+
+    for ax in axs:
+        ax.grid()
+        ax.legend()
+    
+    hist_ax.set_xlabel('Distance Error [mm]')
+    hist_ax.set_ylabel('Measurements')
+
+    plt.show()
+
+    return
+
 #############################################################################
 ###                                  Main                                 ###
 #############################################################################
@@ -450,4 +485,6 @@ if __name__ == "__main__":
     # Plot projected views of the lighthouse
     # plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
 
+    # Plot superimposed "captured data" vs. "ground truth", and error histogram
     plot_transformed_3D_data(df)
+    plot_error_histogram(df)
