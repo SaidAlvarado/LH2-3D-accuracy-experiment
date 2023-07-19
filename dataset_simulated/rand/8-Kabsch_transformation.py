@@ -202,23 +202,42 @@ def compute_distance_between_grid_points(df):
 def correct_perspective(df):
     """
     Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison.
+    Using an SVD, according to: https://nghiaho.com/?page_id=671
     """
     # Grab one point for each axis, plus the origin. Origin=(0,0,0), X=(240,0,0), Y=(0,120,0), Z=(0,0,160) [mm]
-    p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
-    p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    # p000 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    # p100 = df.loc[(df['real_x_mm'] == 240)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    # p010 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 120) & (df['real_z_mm'] == 0), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+    # p001 = df.loc[(df['real_x_mm'] == 0)  & (df['real_y_mm'] == 0) & (df['real_z_mm'] == 160), ['LH_x', 'LH_y', 'LH_z']].values.mean(axis=0)
+
+    # TODO - the transformation is giving way more important to places with more points, and skewing the results.
+    # Get a dataset which is just a point by point average.
 
     # Get the reconstructed points
-    points = df[['LH_x','LH_y','LH_z']].to_numpy()
+    A = df[['LH_x','LH_y','LH_z']].to_numpy().T
+    # Get reference points
+    B = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy().T
 
-    # Calculate rotation matrix
-    R = np.vstack([  (p100 - p000) / np.linalg.norm((p100 - p000)),
-                     (p010 - p000) / np.linalg.norm((p010 - p000)),
-                     (p001 - p000) / np.linalg.norm((p001 - p000))])
+    # Get the centroids
+    A_centroid = A.mean(axis=1).reshape((-1,1))
+    B_centroid = B.mean(axis=1).reshape((-1,1))
 
-    # Correct points
-    correct_points = R @ (points - p000).T
+    # Get H
+    H = (A - A_centroid) @ (B - B_centroid).T
+
+    # Do the SVD
+    U, S, V = np.linalg.svd(H)
+
+    # Get the rotation matrix
+    R = V @ U.T
+
+    if np.linalg.det(R) < 0:
+        assert False, "R determinant is negative"
+
+    # Get the ideal translation
+    t = B_centroid - R @ A_centroid
+
+    correct_points = (R@A + t)
     correct_points = correct_points.T
 
     # Update dataframe
