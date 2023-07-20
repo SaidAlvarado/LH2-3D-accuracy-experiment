@@ -403,8 +403,9 @@ def plot_error_histogram(df):
     # Calculate distance between points and their ground truth
     errors =  np.linalg.norm(ground_truth - points, axis=1)
     # print the mean and standard deviation
-    print(f"Mean = {errors.mean()}")
-    print(f"Standard deviation = {errors.std()}")
+    print(f"Mean Absolute Error = {errors.mean()} mm")
+    print(f"Root Mean Square Error = {np.sqrt((errors**2).mean())} mm")
+    print(f"Error Standard Deviation = {errors.std()} mm")
 
     # prepare the plot
     fig = plt.figure(layout="constrained")
