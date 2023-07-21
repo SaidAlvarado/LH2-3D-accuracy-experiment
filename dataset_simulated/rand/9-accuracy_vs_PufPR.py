@@ -16,8 +16,8 @@ import cv2
 #############################################################################
 
 USE_CAMERA_MATRIX = False  
-N_POINTS = 8  
-N_ITERATIONS = 100
+N_POINTS = 40 
+N_ITERATIONS = 50
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
@@ -241,9 +241,11 @@ def correct_perspective(df):
     # Get the rotation matrix
     R = V @ U.T
 
-    # check for errors.
+    # check for errors, and run the correction
     if np.linalg.det(R) < 0:
-        assert False, "R determinant is negative"
+        U, S, V = np.linalg.svd(R)
+        V[:,2] = -1*V[:,2]
+        R = V @ U.T
 
     # Get the ideal translation
     t = B_centroid - R @ A_centroid
@@ -256,6 +258,21 @@ def correct_perspective(df):
     df['Rt_y'] = correct_points[:,1]
     df['Rt_z'] = correct_points[:,2]
     return df
+
+def compute_errors(df):
+    """Calculate MAE, RMS and Precision for a particular reconstruction"""
+    # Extract needed data from the main dataframe
+    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
+    ground_truth = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
+
+    # Calculate distance between points and their ground truth
+    errors =  np.linalg.norm(ground_truth - points, axis=1)
+    # print the mean and standard deviation
+    mae = errors.mean()
+    rmse = np.sqrt((errors**2).mean())
+    std = errors.std()
+
+    return mae, rmse, std
 
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
@@ -436,9 +453,9 @@ def plot_error_histogram(df):
     # Calculate distance between points and their ground truth
     errors =  np.linalg.norm(ground_truth - points, axis=1)
     # print the mean and standard deviation
-    print(f"Mean Absolute Error = {errors.mean()} mm")
-    print(f"Root Mean Square Error = {np.sqrt((errors**2).mean())} mm")
-    print(f"Error Standard Deviation = {errors.std()} mm")
+    # print(f"Mean Absolute Error = {errors.mean()} mm")
+    # print(f"Root Mean Square Error = {np.sqrt((errors**2).mean())} mm")
+    # print(f"Error Standard Deviation = {errors.std()} mm")
 
     # prepare the plot
     fig = plt.figure(layout="constrained")
@@ -460,6 +477,42 @@ def plot_error_histogram(df):
     plt.show()
 
     return
+
+def plot_acc_vs_npoints(df_plot):
+    
+    # Find out how many unique N_Points are available in this experiment
+    unique_n_points = np.unique(df_plot['n_points'].to_numpy().astype(int), axis=0)
+
+    # Go through all the available N_point experiments
+    mae_std = np.empty((1+unique_n_points.max()-8,3))
+    for i in unique_n_points:
+        # Get the mean of the MAE, and the STD of the MAE
+        mae = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.mean(axis=0)    
+        std = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.std(axis=0)
+        # Add it to our empty array for plotting later
+        mae_std[int(i)-8] = np.array([i, mae, std])    
+
+    # prepare the plot
+    fig = plt.figure(layout="constrained")
+    gs = GridSpec(3, 3, figure = fig)
+    error_ax    = fig.add_subplot(gs[0:3, 0:3])
+    axs = (error_ax,)
+
+    # Plot Y = MAE, X = N_points
+    error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
+    # Add and area with 2 std deviation
+    error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
+
+    for ax in axs:
+        ax.grid()
+        ax.legend()
+    
+    error_ax.set_xlabel('Number of points for Pose Recovery [#]')
+    error_ax.set_ylabel('Distance Error [mm]')
+
+    print(mae_std)
+    plt.show()
+
 
 #############################################################################
 ###                                  Main                                 ###
@@ -497,43 +550,47 @@ if __name__ == "__main__":
     points_grids = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)
 
     # Get a averaged set of LH2 points
-    pts_ave_A = np.empty_like(points_grids, dtype=float)
-    pts_ave_B = np.empty_like(points_grids, dtype=float)
+    pts_ave_A = np.empty((points_grids.shape[0],2), dtype=float)
+    pts_ave_B = np.empty((points_grids.shape[0],2), dtype=float)
     for i in range(points_grids.shape[0]):
         pts_ave_A[i] = df.loc[(df['real_x_mm'] == points_grids[i,0])  & (df['real_y_mm'] == points_grids[i,1]) & (df['real_z_mm'] == points_grids[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values.mean(axis=0)
         pts_ave_B[i] = df.loc[(df['real_x_mm'] == points_grids[i,0])  & (df['real_y_mm'] == points_grids[i,1]) & (df['real_z_mm'] == points_grids[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values.mean(axis=0)
 
 
-    # Start the for loop of how many iterations you're going to have.
-    for iteration in range(N_ITERATIONS):
-        # extract N_POINTS unique points.
-        np.random.choice(points_grids.shape[0], N_POINTS, replace=False)
+    # Start iterating over all Number of points used for the scene reconstruction
+    for npoints in range (8,N_POINTS+1):
+        print(f"n_points: {npoints}")
+        # Start the for loop of how many iterations you're going to have.
+        for iteration in range(N_ITERATIONS):
 
-    # Get R_star and t_star from the unique points
+            if iteration % 20 == 0: print(f"\titeration: {iteration}")
+            # extract N_POINTS unique points.
+            calib_idx = np.random.choice(points_grids.shape[0], npoints, replace=False)
+            calib_points_gt = points_grids[calib_idx]
+            calib_lha = pts_ave_A[calib_idx]
+            calib_lhb = pts_ave_B[calib_idx]
+            # Get R_star and t_star from the unique points
+            t_star, R_star = solve_3d_scene_get_Rt(calib_lha, calib_lhb)
+            # Triangulate all points
+            point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
 
-    # Triangulate all points
+            # Add The 3D point to the Dataframe that has the real coordinates, timestamps etc.
+            # This will help correlate which point are supposed to go where.
+            df['LH_x'] = point3D[:,0]
+            df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
+            df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
 
-    # Get RMS error and save
+            # Scale the scene to real size
+            if 'experimental' in data_file:
+                df = scale_scene_to_real_size(df)
 
+            # Bring reconstructed data to the origin for easier comparison
+            df = correct_perspective(df)
+            # Calculate all relevant errors
+            mae, rmse, std = compute_errors(df)
 
-
-
-    # Solve the 3D scene with recoverPose and Triangulate points
-    t_star, R_star = solve_3d_scene_get_Rt(pts_lighthouse_A, pts_lighthouse_B)
-    point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
-
-    # Add The 3D point to the Dataframe that has the real coordinates, timestamps etc.
-    # This will help correlate which point are supposed to go where.
-    df['LH_x'] = point3D[:,0]
-    df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
-    df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
-
-    # Scale the scene to real size
-    if 'experimental' in data_file:
-        df = scale_scene_to_real_size(df)
-
-    # Bring reconstructed data to the origin for easier comparison
-    df = correct_perspective(df)
+            # add errors to the dataframe where we are accumulating them.
+            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std]
 
 
     #############################################################################
@@ -550,5 +607,10 @@ if __name__ == "__main__":
     # plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
 
     # Plot superimposed "captured data" vs. "ground truth", and error histogram
-    plot_transformed_3D_data(df)
-    plot_error_histogram(df)
+    # plot_transformed_3D_data(df)
+    # plot_error_histogram(df)
+
+    # Plot error analysis
+    plot_acc_vs_npoints(df_plot)
+
+    
