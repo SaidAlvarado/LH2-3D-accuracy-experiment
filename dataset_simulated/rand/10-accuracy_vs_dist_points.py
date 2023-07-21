@@ -16,8 +16,8 @@ import cv2
 #############################################################################
 
 USE_CAMERA_MATRIX = False  
-N_POINTS = 100 
-N_ITERATIONS = 80
+N_POINTS = 60 
+N_ITERATIONS = 50
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
@@ -274,6 +274,11 @@ def compute_errors(df):
 
     return mae, rmse, std
 
+def compute_mad(points):
+    """ Get a list of 3d points and calculate the Median Absolute Deviation"""
+
+    centroid = points.mean(axis=0)
+    return np.linalg.norm(points - centroid, axis=1).mean()
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
     """
@@ -513,6 +518,49 @@ def plot_acc_vs_npoints(df_plot):
     print(mae_std)
     plt.show()
 
+def plot_acc_vs_mad(df_plot):
+    
+    # Find out how many unique N_Points are available in this experiment
+    unique_MAD = np.unique(df_plot['MAD'].to_numpy(), axis=0)
+
+    # # Go through all the available N_point experiments
+    # mae_std = np.empty((unique_MAD.shape[0],3))
+    # for idx,i in enumerate(unique_MAD):
+    #     # Get the mean of the MAE, and the STD of the MAE
+    #     mae = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values.mean(axis=0)    
+    #     std = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values.std(axis=0)
+    #     # Add it to our empty array for plotting later
+    #     mae_std[idx] = np.array([i, mae, std])    
+
+    # prepare the plot
+    fig = plt.figure(layout="constrained")
+    gs = GridSpec(3, 3, figure = fig)
+    error_ax    = fig.add_subplot(gs[0:3, 0:3])
+    axs = (error_ax,)
+
+    # # Plot Y = MAE, X = MAD
+    for i in unique_MAD:
+        mae = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values
+        error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3)
+        error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1)
+    error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3, label='Reconstruction Error')
+    error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1, label='Best Reconstruction')
+
+
+    # Plot Y = MAE, X = N_points
+    # error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
+    # Add and area with 2 std deviation
+    # error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
+
+    for ax in axs:
+        ax.grid()
+        ax.legend()
+    
+    error_ax.set_xlabel('Median Average Deviation [mm]')
+    error_ax.set_ylabel('Medium Average Reconstruction Error [mm]')
+
+    print(df_plot)
+    plt.show()
 
 #############################################################################
 ###                                  Main                                 ###
@@ -541,57 +589,64 @@ if __name__ == "__main__":
 
 
     # Create dataframe to store the results of the analisys
-    df_plot = pd.DataFrame(columns = ['n_points', "MAE", "RMS", 'STD'])
+    df_plot = pd.DataFrame(columns = ['MAD', "MAE", "RMS", 'STD'])
 
-    # Set random seed.
-    np.random.seed(1)
+    # Iterate through all the different sized of cubes you can as calibration points
+    # x_d, is the size of the x-aligned sides of the cube.
+    for x_d in [40, 80, 120, 160, 200, 240]:
+        for y_d in [40, 80, 120]:
+            for z_d in [40, 80, 120, 160]:
+    # for x_d in [40, 80]:
+    #     for y_d in [40,]:
+    #         for z_d in [40,]:
 
-    # Get all unique grid points.
-    points_grids = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)
+                print(f'box = [{x_d}, {y_d}, {z_d}]')
+                # Now iterate over all the possible starting points for these calibration cubes.
+                for x_i in range(0, 240 + 40 - x_d, 40):
+                    for y_i in range(0, 120 + 40 - y_d, 40):
+                        for z_i in range(0, 160 + 40 - z_d, 40):
 
-    # Get a averaged set of LH2 points
-    pts_ave_A = np.empty((points_grids.shape[0],2), dtype=float)
-    pts_ave_B = np.empty((points_grids.shape[0],2), dtype=float)
-    for i in range(points_grids.shape[0]):
-        pts_ave_A[i] = df.loc[(df['real_x_mm'] == points_grids[i,0])  & (df['real_y_mm'] == points_grids[i,1]) & (df['real_z_mm'] == points_grids[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values.mean(axis=0)
-        pts_ave_B[i] = df.loc[(df['real_x_mm'] == points_grids[i,0])  & (df['real_y_mm'] == points_grids[i,1]) & (df['real_z_mm'] == points_grids[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values.mean(axis=0)
+                            # Now generate the 8 points definning the calibration cube
+                            points_calib = np.array([[x_i      , y_i      , z_i      ],
+                                                     [x_i + x_d, y_i      , z_i      ],
+                                                     [x_i      , y_i + y_d, z_i      ],
+                                                     [x_i      , y_i      , z_i + z_d],
+                                                     [x_i + x_d, y_i + y_d, z_i      ],
+                                                     [x_i + x_d, y_i      , z_i + z_d],
+                                                     [x_i      , y_i + y_d, z_i + z_d],
+                                                     [x_i + x_d, y_i + y_d, z_i + z_d]])
+                            
+                            mad = compute_mad(points_calib)
 
+                            # Get the average projections of the chosen calibration points
+                            pts_ave_A = np.empty((points_calib.shape[0],2), dtype=float)
+                            pts_ave_B = np.empty((points_calib.shape[0],2), dtype=float)
+                            for i in range(points_calib.shape[0]):
+                                pts_ave_A[i] = df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values.mean(axis=0)
+                                pts_ave_B[i] = df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values.mean(axis=0)
 
-    # Start iterating over all Number of points used for the scene reconstruction
-    for npoints in range (8,N_POINTS+1):
-        print(f"n_points: {npoints}")
-        # Start the for loop of how many iterations you're going to have.
-        for iteration in range(N_ITERATIONS):
+                            # Get R_star and t_star from the unique points
+                            t_star, R_star = solve_3d_scene_get_Rt(pts_ave_A, pts_ave_B)
+                            # Triangulate all points
+                            point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
 
-            if iteration % 20 == 0: print(f"\titeration: {iteration}")
-            # extract N_POINTS unique points.
-            calib_idx = np.random.choice(points_grids.shape[0], npoints, replace=False)
-            calib_points_gt = points_grids[calib_idx]
-            calib_lha = pts_ave_A[calib_idx]
-            calib_lhb = pts_ave_B[calib_idx]
-            # Get R_star and t_star from the unique points
-            t_star, R_star = solve_3d_scene_get_Rt(calib_lha, calib_lhb)
-            # Triangulate all points
-            point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
+                            # Add The 3D point to the Dataframe that has the real coordinates, timestamps etc.
+                            # This will help correlate which point are supposed to go where.
+                            df['LH_x'] = point3D[:,0]
+                            df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
+                            df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
 
-            # Add The 3D point to the Dataframe that has the real coordinates, timestamps etc.
-            # This will help correlate which point are supposed to go where.
-            df['LH_x'] = point3D[:,0]
-            df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
-            df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
+                            # Scale the scene to real size
+                            if 'experimental' in data_file:
+                                df = scale_scene_to_real_size(df)
 
-            # Scale the scene to real size
-            if 'experimental' in data_file:
-                df = scale_scene_to_real_size(df)
+                            # Bring reconstructed data to the origin for easier comparison
+                            df = correct_perspective(df)
+                            # Calculate all relevant errors
+                            mae, rmse, std = compute_errors(df)
 
-            # Bring reconstructed data to the origin for easier comparison
-            df = correct_perspective(df)
-            # Calculate all relevant errors
-            mae, rmse, std = compute_errors(df)
-
-            # add errors to the dataframe where we are accumulating them.
-            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std]
-
+                            # add errors to the dataframe where we are accumulating them.
+                            df_plot.loc[len(df_plot)] = [mad, mae, rmse, std]
 
     #############################################################################
     ###                             Plotting                                  ###
@@ -611,6 +666,10 @@ if __name__ == "__main__":
     # plot_error_histogram(df)
 
     # Plot error analysis
-    plot_acc_vs_npoints(df_plot)
+    # plot_acc_vs_npoints(df_plot)
+    a = 6
+    plot_acc_vs_mad(df_plot)
+    
+    df_plot.to_csv('dataset_simulated/rand/mae_v_mad.csv', index=True)
 
     
