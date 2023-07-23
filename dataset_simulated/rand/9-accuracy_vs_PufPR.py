@@ -11,13 +11,15 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cv2
 
+from skspatial.objects import Plane, Points
+
 #############################################################################
 ###                                Options                                ###
 #############################################################################
 
 USE_CAMERA_MATRIX = False  
-N_POINTS = 100 
-N_ITERATIONS = 80
+N_POINTS = 200 
+N_ITERATIONS = 100
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
@@ -274,6 +276,22 @@ def compute_errors(df):
 
     return mae, rmse, std
 
+def is_coplanar(points):
+    """
+    taken from the idea here: https://stackoverflow.com/a/72384583
+    returns True or False depending if the points are too coplanar or not.
+    """
+
+    best_fit = Plane.best_fit(points)
+    distances = np.empty((points.shape[0]))
+
+    for i in range(points.shape[0]):
+        distances[i] = best_fit.distance_point(points[i])
+
+    error = distances.mean()
+    return error
+
+
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
     """
@@ -501,7 +519,7 @@ def plot_acc_vs_npoints(df_plot):
     # Plot Y = MAE, X = N_points
     error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
     # Add and area with 2 std deviation
-    error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
+    error_ax.fill_between(mae_std[:,0], np.clip(mae_std[:,1] - mae_std[:,2],0.0,1e9), mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
 
     for ax in axs:
         ax.grid()
@@ -541,7 +559,7 @@ if __name__ == "__main__":
 
 
     # Create dataframe to store the results of the analisys
-    df_plot = pd.DataFrame(columns = ['n_points', "MAE", "RMS", 'STD'])
+    df_plot = pd.DataFrame(columns = ['n_points', "MAE", "RMS", 'STD', 'Coplanar'])
 
     # Set random seed.
     np.random.seed(1)
@@ -570,6 +588,7 @@ if __name__ == "__main__":
             calib_lha = pts_ave_A[calib_idx]
             calib_lhb = pts_ave_B[calib_idx]
             # Get R_star and t_star from the unique points
+
             t_star, R_star = solve_3d_scene_get_Rt(calib_lha, calib_lhb)
             # Triangulate all points
             point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
@@ -588,9 +607,11 @@ if __name__ == "__main__":
             df = correct_perspective(df)
             # Calculate all relevant errors
             mae, rmse, std = compute_errors(df)
+            # Measure complanarity
+            coplanar = is_coplanar(calib_points_gt)
 
             # add errors to the dataframe where we are accumulating them.
-            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std]
+            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std, coplanar]
 
 
     #############################################################################
@@ -611,6 +632,9 @@ if __name__ == "__main__":
     # plot_error_histogram(df)
 
     # Plot error analysis
+    df_plot = df_plot.loc[ (df_plot['Coplanar'] > 30) & (df_plot['MAE'] < 200)]
+
     plot_acc_vs_npoints(df_plot)
+    df_plot.to_csv('dataset_simulated/rand/mae_v_npoints.csv', index=True)
 
     
