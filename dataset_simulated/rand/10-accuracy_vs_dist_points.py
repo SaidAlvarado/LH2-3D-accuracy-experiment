@@ -16,8 +16,7 @@ import cv2
 #############################################################################
 
 USE_CAMERA_MATRIX = False  
-N_POINTS = 60 
-N_ITERATIONS = 50
+MEASURE_PER_POINTS = 50
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
@@ -619,11 +618,14 @@ if __name__ == "__main__":
                             mad = compute_mad(points_calib)
 
                             # Get the average projections of the chosen calibration points
-                            pts_ave_A = np.empty((points_calib.shape[0],2), dtype=float)
-                            pts_ave_B = np.empty((points_calib.shape[0],2), dtype=float)
+                            pts_ave_A = np.empty((0,2), dtype=float)
+                            pts_ave_B = np.empty((0,2), dtype=float)
                             for i in range(points_calib.shape[0]):
-                                pts_ave_A[i] = df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values.mean(axis=0)
-                                pts_ave_B[i] = df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values.mean(axis=0)
+                                pts_ave_A = np.vstack([pts_ave_A, df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values])
+                                pts_ave_B = np.vstack([pts_ave_B, df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values])
+                                # pts_ave_A = np.vstack([pts_ave_A, df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHA_proj_x', 'LHA_proj_y']].values.mean(axis=0)])
+                                # pts_ave_B = np.vstack([pts_ave_B, df.loc[(df['real_x_mm'] == points_calib[i,0])  & (df['real_y_mm'] == points_calib[i,1]) & (df['real_z_mm'] == points_calib[i,2]), ['LHB_proj_x', 'LHB_proj_y']].values.mean(axis=0)])
+
 
                             # Get R_star and t_star from the unique points
                             t_star, R_star = solve_3d_scene_get_Rt(pts_ave_A, pts_ave_B)
