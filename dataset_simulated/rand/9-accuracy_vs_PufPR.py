@@ -18,8 +18,8 @@ from skspatial.objects import Plane, Points
 #############################################################################
 
 USE_CAMERA_MATRIX = False  
-N_POINTS = 200 
-N_ITERATIONS = 100
+N_POINTS = 100 
+N_ITERATIONS = 300
 
 # file with the data to analyze
 # data_file = 'dataset_experimental/data_1point.csv'
@@ -291,6 +291,11 @@ def is_coplanar(points):
     error = distances.mean()
     return error
 
+def compute_mad(points):
+    """ Get a list of 3d points and calculate the Median Absolute Deviation"""
+
+    centroid = points.mean(axis=0)
+    return np.linalg.norm(points - centroid, axis=1).mean()
 
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
@@ -559,7 +564,7 @@ if __name__ == "__main__":
 
 
     # Create dataframe to store the results of the analisys
-    df_plot = pd.DataFrame(columns = ['n_points', "MAE", "RMS", 'STD', 'Coplanar'])
+    df_plot = pd.DataFrame(columns = ['n_points', "MAE", "RMS", 'STD', 'Coplanar', 'MAD'])
 
     # Set random seed.
     np.random.seed(1)
@@ -609,9 +614,11 @@ if __name__ == "__main__":
             mae, rmse, std = compute_errors(df)
             # Measure complanarity
             coplanar = is_coplanar(calib_points_gt)
+            # measure median average deviation between the chosen points
+            mad = compute_mad(calib_points_gt)
 
             # add errors to the dataframe where we are accumulating them.
-            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std, coplanar]
+            df_plot.loc[len(df_plot)] = [npoints, mae, rmse, std, coplanar, mad]
 
 
     #############################################################################
