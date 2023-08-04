@@ -17,22 +17,14 @@ from skspatial.objects import Plane, Points
 ###                                Options                                ###
 #############################################################################
 
-data_file = 'dataset_simulated/rand/mae_v_npoints.csv.bak'
+data_file = 'dataset_simulated/rand/mae_v_npoints.csv'
 
 
-def plot_acc_vs_npoints(df_plot):
+def plot_acc_vs_mad(df_plot):
     
     # Find out how many unique N_Points are available in this experiment
-    unique_n_points = np.unique(df_plot['n_points'].to_numpy().astype(int), axis=0)
-
-    # Go through all the available N_point experiments
-    mae_std = np.empty((1+unique_n_points.max()-8,3))
-    for i in unique_n_points:
-        # Get the mean of the MAE, and the STD of the MAE
-        mae = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.mean(axis=0)    
-        std = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.std(axis=0)
-        # Add it to our empty array for plotting later
-        mae_std[int(i)-8] = np.array([i, mae, std])    
+    MAD = df_plot['MAD'].to_numpy()
+    MAE = df_plot['MAE'].to_numpy()
 
     # prepare the plot
     fig = plt.figure(layout="constrained")
@@ -40,21 +32,31 @@ def plot_acc_vs_npoints(df_plot):
     error_ax    = fig.add_subplot(gs[0:3, 0:3])
     axs = (error_ax,)
 
+    # # Plot Y = MAE, X = MAD
+    # for i in unique_MAD:
+    #     mae = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values
+    #     error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3)
+    #     error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1)
+    # error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3, label='Reconstruction Error')
+    # error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1, label='Best Reconstruction')
+    error_ax.scatter(MAD, MAE, color='xkcd:blue', alpha=0.3, label='Reconstruction Error')
+    # error_ax.scatter(MAD, MAE, color='xkcd:red', alpha=1, label='Best Reconstruction')
+
+
     # Plot Y = MAE, X = N_points
-    error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
+    # error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
     # Add and area with 2 std deviation
-    error_ax.fill_between(mae_std[:,0], np.clip(mae_std[:,1] - mae_std[:,2], 0.0, 1e10), mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
+    # error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
 
     for ax in axs:
         ax.grid()
         ax.legend()
     
-    error_ax.set_xlabel('Number of points [#]')
-    error_ax.set_ylabel('Mean Average Error [mm]')
+    error_ax.set_xlabel('Median Average Deviation [mm]')
+    error_ax.set_ylabel('Medium Average Reconstruction Error [mm]')
 
-    print(mae_std)
+    print(df_plot)
     plt.show()
-
 
 #############################################################################
 ###                                  Main                                 ###
@@ -65,9 +67,9 @@ if __name__ == "__main__":
     # Import data
     df=pd.read_csv(data_file, index_col=0)
 
-    # df = df.loc[ (df['Coplanar'] > 30) & (df['MAE'] < 200)]
+    df = df.loc[ (df['Coplanar'] > 30) & (df['MAE'] < 200)]
 
-    plot_acc_vs_npoints(df)
+    plot_acc_vs_mad(df)
 
 
     
