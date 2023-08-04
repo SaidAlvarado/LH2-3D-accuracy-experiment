@@ -298,26 +298,6 @@ def plot_reconstructed_3D_scene(point3D, t_star, R_star, df=None):
     ax.quiver(t_star_rotated[0],t_star_rotated[2],-t_star_rotated[1],z_axis[0],z_axis[2],-z_axis[1],color='xkcd:green',lw=3)
     ax.scatter(point3D[:,0],point3D[:,2],-point3D[:,1], alpha=0.1)
 
-    # Check if this is the simulated dataset. If yes, plot the correct basestation pose and points
-    if 'simulated' in data_file:
-        with open("dataset_simulated/basestation.json", "r") as json_file:
-            lh2_pose = json.load(json_file)
-
-        lha_t = np.array(lh2_pose['lha_t'])
-        lha_R = np.array(lh2_pose['lha_R'])
-        lhb_t = np.array(lh2_pose['lhb_t'])
-        lhb_R = np.array(lh2_pose['lhb_R'])
-
-        if df is not None:
-            real_point3D = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
-            ax.scatter(real_point3D[:,0],real_point3D[:,1],real_point3D[:,2], color='xkcd:green', label='ground truth')
-
-        arrow = np.array([1,0,0]).reshape((-1,1))
-        ax.quiver(lha_t[0],lha_t[1],lha_t[2], (lha_R @ arrow)[0], (lha_R @ arrow)[1], (lha_R @ arrow)[2], length=0.2, color='xkcd:red' )
-        ax.quiver(lhb_t[0],lhb_t[1],lhb_t[2], (lhb_R @ arrow)[0], (lhb_R @ arrow)[1], (lhb_R @ arrow)[2], length=0.2, color='xkcd:red' )
-        ax.scatter(lha_t[0],lha_t[1],lha_t[2], color='xkcd:red', label='LH1')
-        ax.scatter(lhb_t[0],lhb_t[1],lhb_t[2], color='xkcd:red', label='LH2')
-
     # Plot the real 
     ax.text(-0.18,-0.1,0,s='LHA')
     ax.text(t_star_rotated[0], t_star_rotated[2], -t_star_rotated[1],s='LHB')
