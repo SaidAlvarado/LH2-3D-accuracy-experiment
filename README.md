@@ -9,7 +9,7 @@ To install the required modules, run the following command from the root folder.
 
 `$ pip install -r requirements.txt`
 
-### Selecting the dataset to use
+### Selecting which dataset to use
 
 [line 15](https://github.com/SaidAlvarado/LH2-3D-accuracy-experiment/blob/2f47a34116a0649291dec6418c86256989b11059/lh2_3d_analysis.py#L15) of the `lh2_3d_analysis.py` allows you to select which dataset to process. Uncomment the desired dataset.
 ```python
@@ -18,8 +18,8 @@ data_file = 'dataset_experimental/data_all.csv'
 ```
 
 there are 2 datasets available
-- `dataset_experimental/data_all.csv`  It uses every single data point captured in the 3D printer eperiment.
-- `dataset_experimental/data_1point.csv`  It has only 1 data point per grid position. 
+- `data_all.csv`  It uses every single data point captured in the 3D printer eperiment.
+- `data_1point.csv`  It has only 1 data point per grid position. 
 
 ### Run the code
 
