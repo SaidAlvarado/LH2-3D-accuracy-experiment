@@ -1,8 +1,3 @@
-# This code grabs 8 or more (defined in code) random points from the grid position of the dataset and attempts to solve the scene with them.
-# it does this several time to get statistics of how efective is to add more points to the scene reconstruction.
-#
-#
-
 import pandas as pd
 from datetime import datetime
 import numpy as np
@@ -15,33 +10,10 @@ import cv2
 ###                                Options                                ###
 #############################################################################
 
-USE_CAMERA_MATRIX = False  
-MEASURE_PER_POINTS = 50
-
-# file with the data to analyze
-# data_file = 'dataset_experimental/data_1point.csv'
-data_file = 'dataset_experimental/data_all.csv'
-# data_file = 'dataset_simulated/data.csv'
-
-# Base station calibration parameters
-fcal = {'phase1-B': -0.005335,
-        'phase1-C': -0.004791}
-
-# Undistort points
-dist_a = np.array([[1.0409, -2.4617, 0.1403, -0.0466, 2.6625]])
-dist_b = np.array([[0.0924, -0.6955, -0.0070, 0.0334, 0.7030]])
-
-# Define the intrinsic camera matrices of the LH2 basestations
-Mat_A = np.array([[ 0.9646    ,  0.0017    , -0.0169],
-                  [ 0.        ,  0.8706    ,0.0050],
-                  [ 0.        ,  0.        ,  1.  ]])
-
-Mat_B = np.array([[ 1.0256    , 0.0033     ,-0.0474],
-                  [ 0.        , 0.9174,     -0.0129],
-                  [ 0.        ,  0.        ,  1.        ]])
+USE_CAMERA_MATRIX = False
 
 #############################################################################
-###                                Functions                              ###
+###                      Data Processing Functions                        ###
 #############################################################################
 
 def LH2_count_to_pixels(count_1, count_2, mode):
@@ -79,22 +51,15 @@ def LH2_angles_to_pixels(azimuth, elevation):
                                np.tan(elevation) * 1/np.cos(azimuth)]).T    # vertical   pixel 
     return pts_lighthouse
 
-def solve_3d_scene_get_Rt(pts_a, pts_b):
+def solve_3d_scene(pts_a, pts_b):
     """
     Use the projected LH2-camera points to triangulate the position of the LH2  basestations and of the LH2 receiver
     """
     # Obtain translation and rotation vectors
     F, mask = cv2.findFundamentalMat(pts_a, pts_b, cv2.FM_LMEDS)
-    if USE_CAMERA_MATRIX:
-        points, R_star, t_star, mask = cv2.recoverPose(Mat_A @ F @ Mat_B, pts_a, pts_b)
-    else:
-        points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
+    points, R_star, t_star, mask = cv2.recoverPose(F, pts_a, pts_b)
 
-    return t_star, R_star
- 
-def solve_3d_scene_triangulate_points(pts_a, pts_b, t_star, R_star):
-
-   # Triangulate the points
+    # Triangulate the points
     R_1 = np.eye(3,dtype='float64')
     t_1 = np.zeros((3,1),dtype='float64')
 
@@ -105,12 +70,8 @@ def solve_3d_scene_triangulate_points(pts_a, pts_b, t_star, R_star):
     # inv(t) => -t 
     # That's where all the transpositions and negatives come from.
     # Source: https://stackoverflow.com/a/45722936
-    if USE_CAMERA_MATRIX:
-        P1 = Mat_A @ np.hstack([R_1.T, -R_1.T.dot(t_1)])
-        P2 = Mat_B @ np.hstack([R_star.T, -R_star.T.dot(t_star)])  
-    else:
-        P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
-        P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
+    P1 = np.hstack([R_1.T, -R_1.T.dot(t_1)])
+    P2 = np.hstack([R_star.T, -R_star.T.dot(t_star)])  
     # The projection matrix is the intrisic matrix of the camera multiplied by the extrinsic matrix.
     # When the intrinsic matrix is the identity.
     # The results is the [ Rotation | translation ] in a 3x4 matrix
@@ -120,7 +81,7 @@ def solve_3d_scene_triangulate_points(pts_a, pts_b, t_star, R_star):
 
     # Return the triangulated 3D points
     # Return the position and orientation of the LH2-B wrt LH2-A
-    return point3D
+    return point3D, t_star, R_star
 
 def scale_scene_to_real_size(df):
     """
@@ -210,7 +171,7 @@ def compute_distance_between_grid_points(df):
 
 def correct_perspective(df):
     """
-    Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison.
+    Create a rotation and translation vector to move the reconstructed grid onto the origin for better comparison with the ground truth.
     Using an SVD, according to: https://nghiaho.com/?page_id=671
     """
     
@@ -240,11 +201,8 @@ def correct_perspective(df):
     # Get the rotation matrix
     R = V @ U.T
 
-    # check for errors, and run the correction
     if np.linalg.det(R) < 0:
-        U, S, V = np.linalg.svd(R)
-        V[:,2] = -1*V[:,2]
-        R = V @ U.T
+        assert False, "R determinant is negative"
 
     # Get the ideal translation
     t = B_centroid - R @ A_centroid
@@ -258,26 +216,9 @@ def correct_perspective(df):
     df['Rt_z'] = correct_points[:,2]
     return df
 
-def compute_errors(df):
-    """Calculate MAE, RMS and Precision for a particular reconstruction"""
-    # Extract needed data from the main dataframe
-    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
-    ground_truth = df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy()
-
-    # Calculate distance between points and their ground truth
-    errors =  np.linalg.norm(ground_truth - points, axis=1)
-    # print the mean and standard deviation
-    mae = errors.mean()
-    rmse = np.sqrt((errors**2).mean())
-    std = errors.std()
-
-    return mae, rmse, std
-
-def compute_mad(points):
-    """ Get a list of 3d points and calculate the Median Absolute Deviation"""
-
-    centroid = points.mean(axis=0)
-    return np.linalg.norm(points - centroid, axis=1).mean()
+#############################################################################
+###                          Plotting Function                            ###
+#############################################################################
 
 def plot_distance_histograms(x_dist, y_dist, z_dist):
     """
@@ -457,9 +398,9 @@ def plot_error_histogram(df):
     # Calculate distance between points and their ground truth
     errors =  np.linalg.norm(ground_truth - points, axis=1)
     # print the mean and standard deviation
-    # print(f"Mean Absolute Error = {errors.mean()} mm")
-    # print(f"Root Mean Square Error = {np.sqrt((errors**2).mean())} mm")
-    # print(f"Error Standard Deviation = {errors.std()} mm")
+    print(f"Mean Absolute Error = {errors.mean()} mm")
+    print(f"Root Mean Square Error = {np.sqrt((errors**2).mean())} mm")
+    print(f"Error Standard Deviation = {errors.std()} mm")
 
     # prepare the plot
     fig = plt.figure(layout="constrained")
@@ -481,171 +422,3 @@ def plot_error_histogram(df):
     plt.show()
 
     return
-
-def plot_acc_vs_npoints(df_plot):
-    
-    # Find out how many unique N_Points are available in this experiment
-    unique_n_points = np.unique(df_plot['n_points'].to_numpy().astype(int), axis=0)
-
-    # Go through all the available N_point experiments
-    mae_std = np.empty((1+unique_n_points.max()-8,3))
-    for i in unique_n_points:
-        # Get the mean of the MAE, and the STD of the MAE
-        mae = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.mean(axis=0)    
-        std = df_plot.loc[(df_plot['n_points'] == i), 'MAE'].values.std(axis=0)
-        # Add it to our empty array for plotting later
-        mae_std[int(i)-8] = np.array([i, mae, std])    
-
-    # prepare the plot
-    fig = plt.figure(layout="constrained")
-    gs = GridSpec(3, 3, figure = fig)
-    error_ax    = fig.add_subplot(gs[0:3, 0:3])
-    axs = (error_ax,)
-
-    # Plot Y = MAE, X = N_points
-    error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
-    # Add and area with 2 std deviation
-    error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
-
-    for ax in axs:
-        ax.grid()
-        ax.legend()
-    
-    error_ax.set_xlabel('Number of points for Pose Recovery [#]')
-    error_ax.set_ylabel('Distance Error [mm]')
-
-    print(mae_std)
-    plt.show()
-
-def plot_acc_vs_mad(df_plot):
-    
-    # Find out how many unique N_Points are available in this experiment
-    unique_MAD = np.unique(df_plot['MAD'].to_numpy(), axis=0)
-
-    # # Go through all the available N_point experiments
-    # mae_std = np.empty((unique_MAD.shape[0],3))
-    # for idx,i in enumerate(unique_MAD):
-    #     # Get the mean of the MAE, and the STD of the MAE
-    #     mae = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values.mean(axis=0)    
-    #     std = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values.std(axis=0)
-    #     # Add it to our empty array for plotting later
-    #     mae_std[idx] = np.array([i, mae, std])    
-
-    # prepare the plot
-    fig = plt.figure(layout="constrained")
-    gs = GridSpec(3, 3, figure = fig)
-    error_ax    = fig.add_subplot(gs[0:3, 0:3])
-    axs = (error_ax,)
-
-    # # Plot Y = MAE, X = MAD
-    for i in unique_MAD:
-        mae = df_plot.loc[(df_plot['MAD'] == i), 'MAE'].values
-        error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3)
-        error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1)
-    error_ax.scatter([i]*mae.shape[0], mae, color='xkcd:blue', alpha=0.3, label='Reconstruction Error')
-    error_ax.scatter([i], mae.min(), color='xkcd:red', alpha=1, label='Best Reconstruction')
-
-
-    # Plot Y = MAE, X = N_points
-    # error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
-    # Add and area with 2 std deviation
-    # error_ax.fill_between(mae_std[:,0], mae_std[:,1] - mae_std[:,2], mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
-
-    for ax in axs:
-        ax.grid()
-        ax.legend()
-    
-    error_ax.set_xlabel('Median Average Deviation [mm]')
-    error_ax.set_ylabel('Medium Average Reconstruction Error [mm]')
-
-    print(df_plot)
-    plt.show()
-
-#############################################################################
-###                                  Main                                 ###
-#############################################################################
-
-if __name__ == "__main__":
-
-    # Import data
-    df=pd.read_csv(data_file, index_col=0)
-
-    # Project sweep angles on to the z=1 image plane
-    if 'azimuth_A' not in df.columns:   
-        # Use real dataset directly from lfsr counts
-        pts_lighthouse_A = LH2_count_to_pixels(df['LHA_count_1'].values, df['LHA_count_2'].values, 0)
-        pts_lighthouse_B = LH2_count_to_pixels(df['LHB_count_1'].values, df['LHB_count_2'].values, 1)
-    else: 
-        # Use simulated dataset from azimuth and elevation angles
-        pts_lighthouse_A = LH2_angles_to_pixels(df['azimuth_A'].values, df['elevation_A'].values)
-        pts_lighthouse_B = LH2_angles_to_pixels(df['azimuth_B'].values, df['elevation_B'].values)      
-
-    # Add the LH2 projected matrix into the dataframe that holds the info about what point is where in real life.
-    df['LHA_proj_x'] = pts_lighthouse_A[:,0]
-    df['LHA_proj_y'] = pts_lighthouse_A[:,1]
-    df['LHB_proj_x'] = pts_lighthouse_B[:,0]
-    df['LHB_proj_y'] = pts_lighthouse_B[:,1]
-
-
-    # Get R_star and t_star from the unique points
-    t_star, R_star = solve_3d_scene_get_Rt(pts_lighthouse_A, pts_lighthouse_B)
-    # Triangulate all points
-    point3D = solve_3d_scene_triangulate_points(pts_lighthouse_A, pts_lighthouse_B, t_star, R_star)
-
-    # Add The 3D point to the Dataframe that has the real coordinates, timestamps etc.
-    # This will help correlate which point are supposed to go where.
-    df['LH_x'] = point3D[:,0]
-    df['LH_y'] = point3D[:,2]   # We need to invert 2 of the axis because the LH2 frame Z == depth and Y == Height
-    df['LH_z'] = point3D[:,1]   # But the dataset assumes X = Horizontal, Y = Depth, Z = Height
-
-    # Scale the scene to real size
-    if 'experimental' in data_file:
-        df = scale_scene_to_real_size(df)
-
-    # Bring reconstructed data to the origin for easier comparison
-    df = correct_perspective(df)
-
-    # Iterate through all the different sized of cubes you can as calibration points
-    # x_d, is the size of the x-aligned sides of the cube.
-
-    precision = np.empty((0,3))
-    for x in [0, 40, 80, 120, 160, 200, 240]:
-        for y in [0, 40, 80, 120]:
-            for z in [0, 40, 80, 120, 160]:
-
-                    points = df.loc[(df['real_x_mm'] == x)  & (df['real_y_mm'] == y) & (df['real_z_mm'] == z), ['LH_x', 'LH_y', 'LH_z']].values
-                    std = np.sqrt(np.cov(points.T))
-
-                    precision = np.vstack([precision, np.array([std[0][0], std[1][1], std[2][2]])])
-    
-    precision = precision.mean(axis=0)
-
-    print(f"Std X-axis = {precision[0]} mm")
-    print(f"Std Y-axis = {precision[1]} mm")
-    print(f"Std Z-axis = {precision[2]} mm")
-
-    # print(f"Non-moving average distance to centroid = {precision.mean()} mm")
-    # print(f"Non-moving std deviation = {precision.std()} mm")
-
-    #############################################################################
-    ###                             Plotting                                  ###
-    #############################################################################
-    # Plot X,Y,Z gridpoint distance histograms. If the dataset is real.
-    # if 'experimental' in data_file:
-    #     plot_distance_histograms(x_dist, y_dist, z_dist)
-
-    # Plot 3D reconstructed scene
-    # plot_reconstructed_3D_scene(point3D, t_star, R_star, df)
-
-    # Plot projected views of the lighthouse
-    # plot_projected_LH_views(pts_lighthouse_A, pts_lighthouse_B)
-
-    # Plot superimposed "captured data" vs. "ground truth", and error histogram
-    # plot_transformed_3D_data(df)
-    # plot_error_histogram(df)
-
-    # Plot error analysis
-    # plot_acc_vs_npoints(df_plot)
-    a = 6
-
-    
