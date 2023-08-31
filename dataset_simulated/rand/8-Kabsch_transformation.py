@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import cv2
 
+import seaborn as sns
+
 #############################################################################
 ###                                Options                                ###
 #############################################################################
@@ -388,17 +390,22 @@ def plot_transformed_3D_data(df):
     This will make it easy to plot the error. 
     """
     # Create a figure to plot
-    fig2 = plt.figure()
+    fig2 = plt.figure(layout="constrained", figsize=(5,4))
     ax2 = fig2.add_subplot(111, projection='3d')
     ax2.set_proj_type('ortho')
 
     # Plot the ground truth points
     real_points = np.unique(df[['real_x_mm','real_y_mm','real_z_mm']].to_numpy(), axis=0)  # Plot just a single point per grid position to save on computational power.
-    ax2.scatter(real_points[:,0], real_points[:,1], real_points[:,2], alpha=0.5 ,color='xkcd:green', label="Ground Truth")
+    ax2.scatter(real_points[:,0], real_points[:,1], real_points[:,2], alpha=0.5 ,color='xkcd:green', label="ground truth")
+    ax2.scatter([], [], color="xkcd:blue", label="lighthouse")
     # Plot real dataset points
-    points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
-    ax2.scatter(points[:,0], points[:,1], points[:,2], alpha=0.05, color='xkcd:blue', label="Real Data")
- 
+    points = np.zeros_like(real_points,dtype=float)
+    for idx in range(real_points.shape[0]):
+        x,y,z = real_points[idx]
+        points[idx] = df.loc[(df['real_x_mm'] == x)  & (df['real_y_mm'] == y) & (df['real_z_mm'] == z), ['Rt_x','Rt_y','Rt_z']].mean().values
+
+    # points = df[['Rt_x','Rt_y','Rt_z']].to_numpy()
+    ax2.scatter(points[:,0], points[:,1], points[:,2], alpha=0.8, color='xkcd:blue')
     ax2.axis('equal')
     ax2.legend()
 
@@ -406,6 +413,14 @@ def plot_transformed_3D_data(df):
     ax2.set_xlabel('X [mm]')
     ax2.set_ylabel('Y [mm]')
     ax2.set_zlabel('Z [mm]')
+
+
+    ax2.view_init(11,-81, 0)
+    ax2.set_xlim3d((-16.9, 257.5))
+    ax2.set_ylim3d((-78.4, 196))
+    ax2.set_zlim3d((-25, 170))
+
+    plt.savefig('Result-E-2lh_3d-solvedscene.pdf')
 
     plt.show()
 
@@ -428,14 +443,28 @@ def plot_error_histogram(df):
     print(f"Error Standard Deviation = {errors.std()} mm")
 
     # prepare the plot
-    fig = plt.figure(layout="constrained")
+    fig = plt.figure(layout="constrained", figsize=(5,4))
     gs = GridSpec(3, 3, figure = fig)
     hist_ax    = fig.add_subplot(gs[0:3, 0:3])
     axs = (hist_ax,)
 
+
+    sns.histplot(data=errors,  bins=50, ax=hist_ax, linewidth=0, color="xkcd:baby blue")
+    hist_ax.set_xlim((0, 10))
+    ax2 = hist_ax.twinx()
+    sns.kdeplot(data=errors, ax=ax2, label="density", color="xkcd:black", linewidth=1, linestyle='--')
+
+    hist_ax.axvline(x=errors.mean(), color='xkcd:red', label="Mean")
+    # Trick to get the legend  unified between the TwinX plots
+    hist_ax.plot([], [], color="xkcd:black", linestyle='--', label = 'density')
+
+    xticks_locs = np.linspace(0, 10, 5)  # 5 x-ticks from 0 to 10
+    hist_ax.set_xticks(xticks_locs)
+
+
     # Plot the error histogram
-    n, bins, patches = hist_ax.hist(errors, 50, density=False)
-    hist_ax.axvline(x=errors.mean(), color='red', label="Mean")
+    # n, bins, patches = hist_ax.hist(errors, 50, density=False)
+    # hist_ax.axvline(x=errors.mean(), color='red', label="Mean")
 
     for ax in axs:
         ax.grid()
@@ -443,6 +472,9 @@ def plot_error_histogram(df):
     
     hist_ax.set_xlabel('Distance Error [mm]')
     hist_ax.set_ylabel('Measurements')
+
+    plt.savefig('Result-F-2lh_3d-histogram.pdf')
+
 
     plt.show()
 

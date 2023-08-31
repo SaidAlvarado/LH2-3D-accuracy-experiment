@@ -35,7 +35,7 @@ def plot_acc_vs_npoints(df_plot):
         mae_std[int(i)-8] = np.array([i, mae, std])    
 
     # prepare the plot
-    fig = plt.figure(layout="constrained")
+    fig = plt.figure(layout="constrained", figsize=(5,4))
     gs = GridSpec(3, 3, figure = fig)
     error_ax    = fig.add_subplot(gs[0:3, 0:3])
     axs = (error_ax,)
@@ -43,14 +43,19 @@ def plot_acc_vs_npoints(df_plot):
     # Plot Y = MAE, X = N_points
     error_ax.plot(mae_std[:,0], mae_std[:,1], 'xkcd:blue')
     # Add and area with 2 std deviation
-    error_ax.fill_between(mae_std[:,0], np.clip(mae_std[:,1] - mae_std[:,2], 0.0, 1e10), mae_std[:,1] + mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
+    error_ax.fill_between(mae_std[:,0], np.clip(mae_std[:,1] - 2*mae_std[:,2], 0.0, 1e10), mae_std[:,1] + 2*mae_std[:,2], alpha=0.2, edgecolor='xkcd:indigo', facecolor='lightblue', linestyle='dashed', antialiased=True)
 
     for ax in axs:
         ax.grid()
-        ax.legend()
+        # ax.legend()
     
-    error_ax.set_xlabel('Number of points [#]')
+    error_ax.set_xlabel('Number of points')
     error_ax.set_ylabel('Mean Average Error [mm]')
+
+    error_ax.set_xlim((8, 100))
+    error_ax.set_ylim((0, 50))
+
+    plt.savefig('Result-G-2lh_3d-pufpr.pdf')
 
     print(mae_std)
     plt.show()
@@ -65,7 +70,7 @@ if __name__ == "__main__":
     # Import data
     df=pd.read_csv(data_file, index_col=0)
 
-    # df = df.loc[ (df['Coplanar'] > 30) & (df['MAE'] < 200)]
+    df = df.loc[ (df['Coplanar'] > 30) & (df['MAE'] < 200)]
 
     plot_acc_vs_npoints(df)
 

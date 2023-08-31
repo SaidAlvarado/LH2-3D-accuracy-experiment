@@ -51,10 +51,10 @@ azimuth_b = np.arctan2(p_b[0], p_b[2])
 #############################################################################
 
 pts_lighthouse_A = np.array([np.tan(azimuth_a),       # horizontal pixel 
-                             np.tan(elevation_a)]).T  # vertical   pixel 
+                             np.tan(elevation_a) * 1/np.cos(azimuth_a)]).T  # vertical   pixel 
 
 pts_lighthouse_B = np.array([np.tan(azimuth_b),       # horizontal pixel 
-                             np.tan(elevation_b)]).T  # vertical   pixel
+                             np.tan(elevation_b) * 1/np.cos(azimuth_b)]).T  # vertical   pixel
 
 ## 3D SCENE SOLVING
 
@@ -91,7 +91,7 @@ point3D = point3D[:, :3] / point3D[:, 3:4]
 # obj_points[:,0] -= 1
 # obj_points[:,1] -= 1
 img_points = pts_lighthouse_B
-retval, r_pnp, t_pnp = cv2.solvePnP(obj_points, img_points, np.eye(3), np.zeros((4,1)), flags=cv2.SOLVEPNP_ITERATIVE)
+retval, r_pnp, t_pnp = cv2.solvePnP(obj_points, img_points, np.eye(3), np.zeros((4,1)), flags=cv2.SOLVEPNP_EPNP)
 # R_a, _jac = cv2.Rodrigues(r_pnp) # convert the rotation vecotr to a rotation matrix
 
 #############################################################################
